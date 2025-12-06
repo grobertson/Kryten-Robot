@@ -1,0 +1,38 @@
+[Unit]
+Description=NATS Server with JetStream
+Documentation=https://docs.nats.io
+After=network.target
+
+[Service]
+Type=simple
+User=nats
+Group=nats
+WorkingDirectory=/var/lib/nats
+
+# Start NATS with JetStream enabled
+ExecStart=/usr/local/bin/nats-server -js -c /etc/nats/nats-server.conf
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+StartLimitInterval=300s
+StartLimitBurst=10
+
+# Resource limits
+MemoryMax=1G
+CPUQuota=100%
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/nats
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nats
+
+[Install]
+WantedBy=multi-user.target

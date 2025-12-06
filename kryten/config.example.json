@@ -1,0 +1,34 @@
+{
+  "cytube": {
+    "domain": "cytu.be",
+    "channel": "your-channel-name",
+    "channel_password": null,
+    "user": "YourBotName",
+    "password": null
+  },
+  "nats": {
+    "servers": ["nats://localhost:4222"],
+    "user": null,
+    "password": null,
+    "connect_timeout": 10,
+    "reconnect_time_wait": 2,
+    "max_reconnect_attempts": 10,
+    "allow_reconnect": true
+  },
+  "health": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 8080
+  },
+  "commands": {
+    "enabled": false
+  },
+  "logging": {
+    "base_path": "./logs",
+    "admin_operations": "admin-operations.log",
+    "playlist_operations": "playlist-operations.log",
+    "chat_messages": "chat-messages.log",
+    "command_audit": "command-audit.log"
+  },
+  "log_level": "INFO"
+}

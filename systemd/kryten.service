@@ -1,0 +1,40 @@
+[Unit]
+Description=Kryten CyTube Connector
+Documentation=https://github.com/yourusername/kryten-robot
+After=network.target nats.service
+Wants=nats.service
+
+[Service]
+Type=simple
+User=kryten
+Group=kryten
+WorkingDirectory=/opt/kryten
+Environment="PATH=/opt/kryten/venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Main service command
+ExecStart=/opt/kryten/venv/bin/python -m kryten /opt/kryten/config.json
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+StartLimitInterval=300s
+StartLimitBurst=5
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/kryten/logs
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kryten
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+# Kryten CyTube Connector Dependencies
+
+# NATS messaging
+nats-py>=2.9.0
+
+# Socket.IO client for CyTube
+python-socketio[asyncio-client]>=5.11.0
+
+# HTTP client (for Socket.IO transport)
+aiohttp>=3.9.0
+
+# Development dependencies
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+pytest-mock>=3.14.0
