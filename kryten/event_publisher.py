@@ -182,6 +182,15 @@ class EventPublisher:
                             "correlation_id": raw_event.correlation_id,
                         },
                     )
+                elif event_name == "queueFail":
+                    self.logger.error(
+                        f"Queue failed: {payload}",
+                        extra={
+                            "event_name": event_name,
+                            "error_payload": payload,
+                            "correlation_id": raw_event.correlation_id,
+                        },
+                    )
                 else:
                     self.logger.info(
                         f"Received event: {event_name}",
