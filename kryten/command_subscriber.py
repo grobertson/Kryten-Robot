@@ -189,7 +189,19 @@ class CommandSubscriber:
             
             # Playlist actions
             elif action == "queue" or action == "add_video":
-                return await self._sender.add_video(**params)
+                # Handle both old format (url) and new format (type + id)
+                if "type" in params and "id" in params:
+                    # New format from kryten-py: {"type": "yt", "id": "abc123", "pos": "end"}
+                    # Convert to URL format that CyTube expects
+                    media_type = params.get("type")
+                    media_id = params.get("id")
+                    url = f"{media_type}:{media_id}"
+                    position = params.get("pos", "end")
+                    temp = params.get("temp", False)
+                    return await self._sender.add_video(url=url, position=position, temp=temp)
+                else:
+                    # Old format: {"url": "yt:abc123", "position": "end", "temp": False}
+                    return await self._sender.add_video(**params)
             elif action == "delete" or action == "delete_video":
                 return await self._sender.delete_video(**params)
             elif action == "move" or action == "move_video":
