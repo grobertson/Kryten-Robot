@@ -207,28 +207,20 @@ class CommandSubscriber:
                 # The event sender will handle conversion to int
                 return await self._sender.delete_video(**params)
             elif action == "move" or action == "move_video":
-                # Ensure UIDs are strings for CyTube compatibility
-                if "from" in params:
-                    params["from"] = str(params["from"])
-                if "after" in params:
-                    params["after"] = str(params["after"])
-                # Map 'from' to 'uid' if needed
+                # Map 'from' to 'uid' if needed (event sender expects 'uid' parameter)
                 if "from" in params and "uid" not in params:
                     params["uid"] = params.pop("from")
+                # Event sender will handle UID type conversions
                 return await self._sender.move_video(**params)
             elif action == "jump" or action == "jump_to":
-                # Ensure UID is string for CyTube compatibility
-                if "uid" in params:
-                    params["uid"] = str(params["uid"])
+                # Event sender will handle UID type conversion
                 return await self._sender.jump_to(**params)
             elif action == "clear" or action == "clear_playlist":
                 return await self._sender.clear_playlist()
             elif action == "shuffle" or action == "shuffle_playlist":
                 return await self._sender.shuffle_playlist()
             elif action == "set_temp" or action == "setTemp":
-                # Ensure UID is string for CyTube compatibility
-                if "uid" in params:
-                    params["uid"] = str(params["uid"])
+                # Event sender expects uid parameter and handles type conversion
                 return await self._sender.set_temp(**params)
             
             # Playback actions

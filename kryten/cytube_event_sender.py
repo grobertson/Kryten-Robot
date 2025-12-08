@@ -227,9 +227,14 @@ class CytubeEventSender:
             return False
         
         try:
-            payload = {"from": uid, "after": after}
+            # CyTube TYPE_MOVE_MEDIA: {from: "number", after: "string,number"}
+            # Convert 'from' to integer, keep 'after' as-is (can be string like "prepend" or number)
+            from_uid = int(uid) if isinstance(uid, str) and uid.isdigit() else uid
+            after_val = int(after) if isinstance(after, str) and after.isdigit() else after
             
-            self._logger.debug(f"Moving video {uid} after {after}")
+            payload = {"from": from_uid, "after": after_val}
+            
+            self._logger.debug(f"Moving video {from_uid} after {after_val}")
             await self._connector._socket.emit("moveMedia", payload)
             
             # Audit log playlist operation
@@ -262,10 +267,13 @@ class CytubeEventSender:
             return False
         
         try:
-            payload = {"uid": uid}
+            # CyTube expects the UID directly (string or number), not wrapped in an object
+            # See: src/channel/playlist.js handleJumpTo checks typeof data !== "string" && typeof data !== "number"
+            # Client code: socket.emit("jumpTo", li.data("uid"))
+            uid_val = int(uid) if uid.isdigit() else uid
             
-            self._logger.debug(f"Jumping to video: {uid}")
-            await self._connector._socket.emit("jumpTo", payload)
+            self._logger.debug(f"Jumping to video: {uid_val}")
+            await self._connector._socket.emit("jumpTo", uid_val)
             
             # Audit log playlist operation
             if self._audit_logger:
@@ -356,9 +364,11 @@ class CytubeEventSender:
             return False
         
         try:
-            payload = {"uid": uid, "temp": temp}
+            # CyTube TYPE_SET_TEMP: {uid: "number", temp: "boolean"}
+            uid_num = int(uid) if isinstance(uid, str) and uid.isdigit() else uid
+            payload = {"uid": uid_num, "temp": temp}
             
-            self._logger.debug(f"Setting temp={temp} for video: {uid}")
+            self._logger.debug(f"Setting temp={temp} for video: {uid_num}")
             await self._connector._socket.emit("setTemp", payload)
             
             # Audit log playlist operation
