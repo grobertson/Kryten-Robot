@@ -1,10 +1,14 @@
-# Kryten CyTube Connector Dependencies
+# Kryten CyTube Connector (Kryten-Robot) Dependencies
+# This is the CyTube connector that bridges CyTube to NATS
 
 # NATS messaging
 nats-py>=2.9.0
 
-# Socket.IO client for CyTube
+# Socket.IO client for CyTube connection
 python-socketio[asyncio-client]>=5.11.0
+
+# WebSocket support for Socket.IO
+websockets>=12.0
 
 # HTTP client (for Socket.IO transport)
 aiohttp>=3.9.0

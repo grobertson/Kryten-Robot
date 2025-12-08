@@ -91,7 +91,7 @@ class CommandSubscriber:
     async def start(self) -> None:
         """Start subscribing to command subjects.
         
-        Subscribes to cytube.commands.{channel}.* to receive all commands
+        Subscribes to kryten.commands.cytube.{channel}.> to receive all commands
         for this channel.
         """
         if self._running:
@@ -100,8 +100,12 @@ class CommandSubscriber:
         
         self._running = True
         
-        # Subscribe to all commands for this channel
-        subject = f"cytube.commands.{self._domain.lower()}.{self._channel.lower()}.>"
+        # Import here to use the updated function
+        from .subject_builder import normalize_token
+        
+        # Subscribe to all commands for this channel (domain normalized out)
+        channel_normalized = normalize_token(self._channel)
+        subject = f"kryten.commands.cytube.{channel_normalized}.>"
         self._subscription = await self._nats.subscribe(subject, self._handle_command)
         
         self._logger.info(f"Command subscriber started on subject: {subject}")

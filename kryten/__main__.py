@@ -26,6 +26,7 @@ from typing import Optional
 from . import (
     __version__,
     CommandSubscriber,
+    ConnectionWatchdog,
     CytubeConnector,
     CytubeEventSender,
     EventPublisher,
@@ -60,6 +61,8 @@ def print_startup_banner(config_path: str) -> None:
         config = load_config(config_path)
         
         # Build example subjects to show what we'll subscribe/publish to
+        from .subject_builder import build_command_subject, normalize_token
+        
         example_event = RawEvent(
             event_name="chatMsg",
             payload={},
@@ -67,8 +70,7 @@ def print_startup_banner(config_path: str) -> None:
             domain=config.cytube.domain
         )
         event_subject = build_event_subject(example_event)
-        # Manually construct command subject since build_command_subject doesn't exist yet
-        command_subject = f"cytube.commands.{config.cytube.domain}.{config.cytube.channel}.*"
+        command_subject = build_command_subject(config.cytube.domain, config.cytube.channel, "*")
         
         print("=" * 60)
         print(f"Kryten CyTube Connector v{__version__}")
@@ -79,7 +81,7 @@ def print_startup_banner(config_path: str) -> None:
         print(f"NATS:    {config.nats.servers[0] if config.nats.servers else 'N/A'}")
         print("=" * 60)
         print("NATS Subjects:")
-        print(f"  Publishing:  cytube.events.{config.cytube.domain}.{config.cytube.channel}.*")
+        print(f"  Publishing:  {event_subject.rsplit('.', 1)[0]}.*")
         print(f"  Subscribing: {command_subject}")
         print("=" * 60)
         print()
@@ -120,6 +122,7 @@ async def main(config_path: str) -> int:
     sender: Optional[CytubeEventSender] = None
     cmd_subscriber: Optional[CommandSubscriber] = None
     health_monitor: Optional[HealthMonitor] = None
+    watchdog: Optional[ConnectionWatchdog] = None
     shutdown_event = asyncio.Event()
     
     def signal_handler(signum: int, frame) -> None:
@@ -300,6 +303,33 @@ async def main(config_path: str) -> int:
         connector.on_event("chatMsg", handle_chat_message)
         logger.info("Chat message logging registered")
         
+        # Start connection watchdog to detect stale connections
+        async def handle_watchdog_timeout():
+            """Handle connection watchdog timeout by initiating shutdown."""
+            logger.error("Connection watchdog timeout - no events received")
+            logger.info("Initiating reconnection via graceful shutdown")
+            shutdown_event.set()
+        
+        watchdog = ConnectionWatchdog(
+            timeout=120.0,  # 2 minutes without events triggers reconnection
+            on_timeout=handle_watchdog_timeout,
+            logger=logger,
+            enabled=True
+        )
+        await watchdog.start()
+        logger.info("Connection watchdog monitoring CyTube health")
+        
+        # Feed events to watchdog to keep it alive
+        def pet_watchdog(event_name: str, payload: dict) -> None:
+            """Pet watchdog on any received event."""
+            if watchdog:
+                watchdog.pet()
+        
+        # Register watchdog feeder for common periodic events
+        # Media events happen regularly as videos play
+        for event in ["changeMedia", "mediaUpdate", "setCurrent", "chatMsg", "usercount"]:
+            connector.on_event(event, pet_watchdog)
+        
         try:
             await connector.connect()
             logger.info("Successfully connected to CyTube")
@@ -448,23 +478,39 @@ async def main(config_path: str) -> int:
         # REQ-007: Shutdown sequence (reverse order)
         logger.info("Beginning graceful shutdown")
         
+        # 0. Stop watchdog first to prevent triggering during shutdown
+        if watchdog:
+            logger.info("Stopping connection watchdog")
+            try:
+                await watchdog.stop()
+                logger.info("Connection watchdog stopped")
+            except Exception as e:
+                logger.error(f"Error stopping watchdog: {e}")
+        
         # 1. Stop health monitor
         if health_monitor:
             logger.info("Stopping health monitor")
-            health_monitor.stop()
-            logger.info("Health monitor stopped")
+            try:
+                health_monitor.stop()
+                logger.info("Health monitor stopped")
+            except Exception as e:
+                logger.error(f"Error stopping health monitor: {e}")
         
         # 2. Stop state query handler
         if state_query_handler:
             logger.info("Stopping state query handler")
-            await state_query_handler.stop()
-            logger.info("State query handler stopped")
+            try:
+                await state_query_handler.stop()
+                logger.info("State query handler stopped")
+            except Exception as e:
+                logger.error(f"Error stopping state query handler: {e}")
         
         # 2b. Unsubscribe user level query handler
         if user_level_subscription:
             try:
                 logger.info("Stopping user level query handler")
-                await nats_client.unsubscribe(user_level_subscription)
+                if nats_client and nats_client.is_connected:
+                    await nats_client.unsubscribe(user_level_subscription)
                 logger.info("User level query handler stopped")
             except Exception as e:
                 logger.error(f"Error stopping user level query handler: {e}")
@@ -472,46 +518,70 @@ async def main(config_path: str) -> int:
         # 3. Stop state manager
         if state_manager:
             logger.info("Stopping state manager")
-            await state_manager.stop()
-            logger.info("State manager stopped")
+            try:
+                await state_manager.stop()
+                logger.info("State manager stopped")
+            except Exception as e:
+                logger.error(f"Error stopping state manager: {e}")
         
         # 4. Stop command subscriber
         if cmd_subscriber:
             logger.info("Stopping command subscriber")
-            await cmd_subscriber.stop()
-            logger.info("Command subscriber stopped")
+            try:
+                await cmd_subscriber.stop()
+                logger.info("Command subscriber stopped")
+            except Exception as e:
+                logger.error(f"Error stopping command subscriber: {e}")
         
         # 5. Stop publisher (completes current event processing)
-        logger.info("Stopping event publisher")
-        await publisher.stop()
-        
-        # Wait for publisher task to complete
-        try:
-            await asyncio.wait_for(publisher_task, timeout=5.0)
-            logger.info("Event publisher stopped")
-        except asyncio.TimeoutError:
-            logger.warning("Event publisher did not stop within timeout, cancelling")
-            publisher_task.cancel()
+        if publisher:
+            logger.info("Stopping event publisher")
             try:
-                await publisher_task
-            except asyncio.CancelledError:
-                pass
+                await publisher.stop()
+                
+                # Wait for publisher task to complete
+                try:
+                    await asyncio.wait_for(publisher_task, timeout=5.0)
+                    logger.info("Event publisher stopped")
+                except asyncio.TimeoutError:
+                    logger.warning("Event publisher did not stop within timeout, cancelling")
+                    publisher_task.cancel()
+                    try:
+                        await publisher_task
+                    except asyncio.CancelledError:
+                        pass
+            except Exception as e:
+                logger.error(f"Error stopping publisher: {e}")
         
         # 6. Disconnect from CyTube
-        logger.info("Disconnecting from CyTube")
-        await connector.disconnect()
-        await lifecycle.publish_disconnected("CyTube", reason="Graceful shutdown")
-        logger.info("Disconnected from CyTube")
+        if connector:
+            logger.info("Disconnecting from CyTube")
+            try:
+                await connector.disconnect()
+                if lifecycle and nats_client and nats_client.is_connected:
+                    await lifecycle.publish_disconnected("CyTube", reason="Graceful shutdown")
+                logger.info("Disconnected from CyTube")
+            except Exception as e:
+                logger.error(f"Error disconnecting from CyTube: {e}")
         
         # 7. Publish shutdown event and stop lifecycle publisher
-        await lifecycle.publish_shutdown(reason="Normal shutdown")
-        await lifecycle.stop()
-        logger.info("Lifecycle event publisher stopped")
+        if lifecycle:
+            try:
+                if nats_client and nats_client.is_connected:
+                    await lifecycle.publish_shutdown(reason="Normal shutdown")
+                await lifecycle.stop()
+                logger.info("Lifecycle event publisher stopped")
+            except Exception as e:
+                logger.error(f"Error stopping lifecycle publisher: {e}")
         
         # 8. Disconnect from NATS
-        logger.info("Disconnecting from NATS")
-        await nats_client.disconnect()
-        logger.info("Disconnected from NATS")
+        if nats_client:
+            logger.info("Disconnecting from NATS")
+            try:
+                await nats_client.disconnect()
+                logger.info("Disconnected from NATS")
+            except Exception as e:
+                logger.error(f"Error disconnecting from NATS: {e}")
         
         logger.info("Graceful shutdown complete")
         
@@ -545,18 +615,41 @@ async def main(config_path: str) -> int:
         
         # Cleanup any initialized components
         try:
+            if watchdog:
+                try:
+                    await watchdog.stop()
+                except Exception as e:
+                    logger.error(f"Error stopping watchdog during cleanup: {e}")
             if health_monitor:
-                health_monitor.stop()
+                try:
+                    health_monitor.stop()
+                except Exception as e:
+                    logger.error(f"Error stopping health monitor during cleanup: {e}")
             if state_manager:
-                await state_manager.stop()
+                try:
+                    await state_manager.stop()
+                except Exception as e:
+                    logger.error(f"Error stopping state manager during cleanup: {e}")
             if cmd_subscriber:
-                await cmd_subscriber.stop()
+                try:
+                    await cmd_subscriber.stop()
+                except Exception as e:
+                    logger.error(f"Error stopping command subscriber during cleanup: {e}")
             if publisher:
-                await publisher.stop()
+                try:
+                    await publisher.stop()
+                except Exception as e:
+                    logger.error(f"Error stopping publisher during cleanup: {e}")
             if connector:
-                await connector.disconnect()
+                try:
+                    await connector.disconnect()
+                except Exception as e:
+                    logger.error(f"Error disconnecting connector during cleanup: {e}")
             if nats_client:
-                await nats_client.disconnect()
+                try:
+                    await nats_client.disconnect()
+                except Exception as e:
+                    logger.error(f"Error disconnecting NATS during cleanup: {e}")
         except Exception as cleanup_error:
             if logger:
                 logger.error(f"Error during cleanup: {cleanup_error}", exc_info=True)

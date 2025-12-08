@@ -1,86 +1,100 @@
 """NATS Subject Builder for CyTube Events.
 
 This module provides utilities for constructing and parsing hierarchical NATS
-subject strings following the format: cytube.events.{domain}.{channel}.{event_name}
+subject strings following the format: kryten.events.cytube.{channel}.{event_name}
 
 Subject Format
 --------------
-cytube.events.{domain}.{channel}.{event_name}
-            ^        ^         ^
-            |        |         +-- Event type (e.g., chatMsg)
-            |        +------------ Channel name (e.g., lounge)
-            +--------------------- Domain (e.g., cytu.be)
+kryten.events.cytube.{channel}.{event_name}
+          ^       ^        ^         ^
+          |       |        |         +-- Event type (e.g., chatmsg)
+          |       |        +------------ Channel name (e.g., 420grindhouse)
+          |       +--------------------- Platform literal (always "cytube")
+          +----------------------------- Namespace (always "kryten")
+
+All tokens are normalized: lowercase, dots removed, spaces to hyphens.
+This ensures cy.tube, Cy.tube, cytu.be all normalize to "cytube".
+Channels like "420Grindhouse" normalize to "420grindhouse".
 
 Wildcard Subscriptions
 ----------------------
 NATS supports wildcard subscriptions for flexible filtering:
 
 - Single level wildcard (*):
-  cytube.events.*.lounge.chatMsg  # All domains, lounge channel, chatMsg events
+  kryten.events.cytube.*.chatmsg  # All channels, chatmsg events
 
 - Multi-level wildcard (>):
-  cytube.events.cytu.be.>          # All events from cytu.be domain
-  cytube.events.*.lounge.>         # All events from any domain's lounge channel
+  kryten.events.cytube.420grindhouse.>  # All events from 420grindhouse channel
 
 Examples
 --------
->>> from bot.kryten import RawEvent
->>> from bot.kryten.subject_builder import build_subject, build_event_subject
+>>> from .raw_event import RawEvent
+>>> from .subject_builder import build_subject, build_event_subject
 >>>
 >>> # Build subject from components
->>> subject = build_subject("cytu.be", "lounge", "chatMsg")
+>>> subject = build_subject("cytu.be", "420Grindhouse", "chatMsg")
 >>> print(subject)
-'cytube.events.cytu.be.lounge.chatmsg'
+'kryten.events.cytube.420grindhouse.chatmsg'
 >>>
 >>> # Build subject from RawEvent
->>> event = RawEvent("chatMsg", {"user": "bob"}, "lounge", "cytu.be")
+>>> event = RawEvent("chatMsg", {"user": "bob"}, "420Grindhouse", "cytu.be")
 >>> subject = build_event_subject(event)
 >>>
 >>> # Parse subject back to components
->>> from bot.kryten.subject_builder import parse_subject
->>> components = parse_subject("cytube.events.cytu.be.lounge.chatMsg")
->>> print(components['domain'])
-'cytu.be'
+>>> from .subject_builder import parse_subject
+>>> components = parse_subject("kryten.events.cytube.420grindhouse.chatmsg")
+>>> print(components['channel'])
+'420grindhouse'
 """
-
-import re
-from typing import Dict
 
 from .raw_event import RawEvent
 
-
-SUBJECT_PREFIX = "cytube.events"
+SUBJECT_PREFIX = "kryten.events"
 """NATS subject prefix for all CyTube events."""
+
+COMMAND_PREFIX = "kryten.commands"
+"""NATS subject prefix for all CyTube commands."""
 
 MAX_TOKEN_LENGTH = 100
 """Maximum length for individual subject tokens to prevent exceeding NATS limits."""
 
 
-def sanitize_token(token: str) -> str:
-    """Sanitize subject token for NATS compatibility.
-
-    Converts to lowercase, replaces spaces with hyphens, and removes invalid
-    characters including NATS wildcards (* and >).
+def normalize_token(token: str) -> str:
+    """Normalize token for consistent NATS subject matching.
+    
+    Aggressively normalizes domains and channels to ensure consistent matching:
+    - Converts to lowercase
+    - Removes ALL dots (cy.tube -> cytube, cytu.be -> cytube)
+    - Replaces spaces with hyphens
+    - Removes special characters
+    
+    This ensures that variations like "cy.tube", "Cy.tube", "cytu.be" all
+    normalize to the same subject token, making NATS routing reliable.
 
     Args:
-        token: Raw token string to sanitize.
+        token: Raw token string to normalize.
 
     Returns:
-        Sanitized token suitable for NATS subject.
+        Normalized token suitable for NATS subject.
 
     Examples:
-        >>> sanitize_token("My Channel!")
+        >>> normalize_token("cy.tube")
+        'cytube'
+        >>> normalize_token("Cytu.be")
+        'cytube'
+        >>> normalize_token("420Grindhouse")
+        '420grindhouse'
+        >>> normalize_token("My Channel!")
         'my-channel'
-        >>> sanitize_token("Test_Channel #1")
-        'test_channel-1'
-        >>> sanitize_token("café")
-        'café'
     """
     if not token:
         return ""
 
-    # Convert to lowercase
+    # Convert to lowercase first
     token = token.lower()
+
+    # Remove ALL dots (critical for domain normalization)
+    token = token.replace(".", "")
 
     # Replace spaces with hyphens
     token = token.replace(" ", "-")
@@ -89,10 +103,9 @@ def sanitize_token(token: str) -> str:
     token = token.replace("*", "").replace(">", "")
 
     # Remove invalid characters for NATS subjects
-    # Keep: alphanumeric (ASCII + Unicode), dots, hyphens, underscores
-    # Remove: other special chars, but preserve UTF-8 letters
-    # Simple approach: remove only problematic ASCII special chars
-    invalid_chars = '!@#$%^&*()+=[]{|}\\:;"\'<>,?/'
+    # Keep: alphanumeric (ASCII + Unicode), hyphens, underscores only
+    # Remove: all other special chars
+    invalid_chars = "!@#$%^&*()+=[]{|}\\:;\"'<>,?/"
     for char in invalid_chars:
         token = token.replace(char, "")
 
@@ -103,48 +116,55 @@ def sanitize_token(token: str) -> str:
     return token
 
 
+def sanitize_token(token: str) -> str:
+    """Legacy alias for normalize_token. Use normalize_token instead.
+    
+    Deprecated: This function exists for backward compatibility only.
+    Use normalize_token() for new code.
+    """
+    return normalize_token(token)
+
+
 def build_subject(domain: str, channel: str, event_name: str) -> str:
     """Build NATS subject from event components.
 
     Constructs hierarchical subject following the format:
-    cytube.events.{domain}.{channel}.{event_name}
-
-    Domain is lowercased but NOT sanitized (to preserve dots in domain names).
-    Channel and event_name are sanitized and normalized.
+    kryten.events.cytube.{channel}.{event_name}
+    
+    All components are aggressively normalized (lowercase, dots removed).
 
     Args:
-        domain: CyTube server domain (e.g., "cytu.be").
-        channel: Channel name (e.g., "lounge").
+        domain: CyTube server domain (e.g., "cytu.be", "cy.tube").
+        channel: Channel name (e.g., "420Grindhouse").
         event_name: Socket.IO event name (e.g., "chatMsg").
 
     Returns:
         Formatted NATS subject string.
 
     Raises:
-        ValueError: If any component is empty after sanitization.
+        ValueError: If any component is empty after normalization.
 
     Examples:
         >>> build_subject("cytu.be", "lounge", "chatMsg")
-        'cytube.events.cytu.be.lounge.chatmsg'
-        >>> build_subject("CYTU.BE", "Test Channel", "chatMsg")
-        'cytube.events.cytu.be.test-channel.chatmsg'
+        'kryten.events.cytube.lounge.chatmsg'
+        >>> build_subject("cy.tube", "420Grindhouse", "chatMsg")
+        'kryten.events.cytube.420grindhouse.chatmsg'
+        >>> build_subject("CYTU.BE", "Test Channel", "userJoin")
+        'kryten.events.cytube.test-channel.userjoin'
     """
-    # Domain is lowercased but not sanitized (preserve dots)
-    domain_clean = domain.lower().strip()
-    # Channel and event are sanitized
-    channel_clean = sanitize_token(channel)
-    event_clean = sanitize_token(event_name)
+    # Normalize all components (domain dots removed, everything lowercase)
+    domain_clean = normalize_token(domain)
+    channel_clean = normalize_token(channel)
+    event_clean = normalize_token(event_name)
 
     # Validate components are not empty
-    if not domain_clean:
-        raise ValueError("Domain cannot be empty after sanitization")
     if not channel_clean:
-        raise ValueError("Channel cannot be empty after sanitization")
+        raise ValueError("Channel cannot be empty after normalization")
     if not event_clean:
-        raise ValueError("Event name cannot be empty after sanitization")
+        raise ValueError("Event name cannot be empty after normalization")
 
-    # Build subject
-    subject = f"{SUBJECT_PREFIX}.{domain_clean}.{channel_clean}.{event_clean}"
+    # Build subject with "cytube" as literal platform name (domain normalized out)
+    subject = f"{SUBJECT_PREFIX}.cytube.{channel_clean}.{event_clean}"
 
     # Final validation
     if len(subject) > 255:
@@ -166,15 +186,63 @@ def build_event_subject(event: RawEvent) -> str:
         Formatted NATS subject string.
 
     Examples:
-        >>> from bot.kryten import RawEvent
-        >>> event = RawEvent("chatMsg", {}, "lounge", "cytu.be")
+        >>> from kryten import RawEvent
+        >>> event = RawEvent(event_name="chatMsg", payload={}, channel="lounge", domain="cytu.be")
         >>> build_event_subject(event)
         'cytube.events.cytu.be.lounge.chatmsg'
     """
     return build_subject(event.domain, event.channel, event.event_name)
 
 
-def parse_subject(subject: str) -> Dict[str, str]:
+def build_command_subject(domain: str, channel: str, action: str) -> str:
+    """Build NATS subject for commands.
+
+    Constructs hierarchical subject following the format:
+    kryten.commands.cytube.{channel}.{action}
+    
+    All components are aggressively normalized (lowercase, dots removed).
+
+    Args:
+        domain: Domain name (e.g., "cytu.be", "cy.tube").
+        channel: Channel name (e.g., "420Grindhouse").
+        action: Command action (e.g., "chat", "queue").
+
+    Returns:
+        Formatted NATS subject string.
+
+    Raises:
+        ValueError: If any component is empty after normalization.
+
+    Examples:
+        >>> build_command_subject("cytu.be", "lounge", "chat")
+        'kryten.commands.cytube.lounge.chat'
+        >>> build_command_subject("cy.tube", "420Grindhouse", "chat")
+        'kryten.commands.cytube.420grindhouse.chat'
+        >>> build_command_subject("Cytu.be", "Test Channel", "queue")
+        'kryten.commands.cytube.test-channel.queue'
+    """
+    # Normalize all components (domain dots removed, everything lowercase)
+    domain_clean = normalize_token(domain)
+    channel_clean = normalize_token(channel)
+    action_clean = normalize_token(action)
+
+    # Validate components are not empty
+    if not channel_clean:
+        raise ValueError("Channel cannot be empty after normalization")
+    if not action_clean:
+        raise ValueError("Action cannot be empty after normalization")
+
+    # Build subject with "cytube" as literal platform name (domain normalized out)
+    subject = f"{COMMAND_PREFIX}.cytube.{channel_clean}.{action_clean}"
+
+    # Final validation
+    if len(subject) > 255:
+        raise ValueError(f"Subject exceeds NATS limit of 255 characters: {len(subject)}")
+
+    return subject
+
+
+def parse_subject(subject: str) -> dict[str, str]:
     """Parse NATS subject into components.
 
     Extracts prefix, domain, channel, and event_name from a hierarchical
@@ -206,12 +274,11 @@ def parse_subject(subject: str) -> Dict[str, str]:
     # Check prefix first
     if not subject.startswith(SUBJECT_PREFIX + "."):
         raise ValueError(
-            f"Invalid subject prefix: expected '{SUBJECT_PREFIX}.', "
-            f"got '{subject[:20]}...'"
+            f"Invalid subject prefix: expected '{SUBJECT_PREFIX}.', " f"got '{subject[:20]}...'"
         )
 
     # Remove prefix to get remaining components
-    remaining = subject[len(SUBJECT_PREFIX) + 1:]  # +1 for the dot
+    remaining = subject[len(SUBJECT_PREFIX) + 1 :]  # +1 for the dot
 
     # Split remaining part
     tokens = remaining.split(".")
@@ -253,9 +320,11 @@ def parse_subject(subject: str) -> Dict[str, str]:
 
 __all__ = [
     "SUBJECT_PREFIX",
+    "COMMAND_PREFIX",
     "MAX_TOKEN_LENGTH",
     "sanitize_token",
     "build_subject",
     "build_event_subject",
+    "build_command_subject",
     "parse_subject",
 ]

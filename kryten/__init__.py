@@ -42,6 +42,7 @@ def get_version() -> str:
 
 from .command_subscriber import CommandSubscriber
 from .config import CytubeConfig, KrytenConfig, NatsConfig, load_config
+from .connection_watchdog import ConnectionWatchdog
 from .correlation import (
     CorrelationContext,
     CorrelationFilter,
@@ -85,6 +86,7 @@ __all__ = [
     "__version__",
     "get_version",
     "CommandSubscriber",
+    "ConnectionWatchdog",
     "CytubeConfig",
     "KrytenConfig",
     "NatsConfig",
