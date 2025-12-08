@@ -73,6 +73,7 @@ from .shutdown_handler import (
 )
 from .state_manager import StateManager
 from .state_query_handler import StateQueryHandler
+from .state_updater import StateUpdater
 from .subject_builder import (
     SUBJECT_PREFIX,
     build_event_subject,
@@ -113,6 +114,7 @@ __all__ = [
     "ShutdownResult",
     "StateManager",
     "StateQueryHandler",
+    "StateUpdater",
     "SUBJECT_PREFIX",
     "build_subject",
     "build_event_subject",
