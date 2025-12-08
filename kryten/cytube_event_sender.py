@@ -107,14 +107,18 @@ class CytubeEventSender:
     
     async def add_video(
         self,
-        url: str,
+        url: str = None,
+        media_type: str = None,
+        media_id: str = None,
         position: str = "end",
         temp: bool = False,
     ) -> bool:
         """Add video to playlist.
         
         Args:
-            url: Video URL (YouTube, Vimeo, etc.).
+            url: Video URL (legacy format: "yt:abc123" or full URL).
+            media_type: Media type ("yt", "vm", "dm", "cu", etc.).
+            media_id: Media ID or URL.
             position: Position to add ("end", "next", or media UID).
             temp: Mark as temporary (removed after playing).
         
@@ -122,21 +126,35 @@ class CytubeEventSender:
             True if sent successfully, False otherwise.
         
         Examples:
-            >>> await sender.add_video("https://youtu.be/dQw4w9WgXcQ")
-            >>> await sender.add_video(url, position="next", temp=True)
+            >>> await sender.add_video(url="https://youtu.be/dQw4w9WgXcQ")
+            >>> await sender.add_video(media_type="cu", media_id="https://example.com/video.mp4")
         """
         if not self._connector.is_connected:
             self._logger.error("Cannot queue video: not connected")
             return False
         
         try:
-            payload = {
-                "id": url,
-                "pos": position,
-                "temp": temp,
-            }
+            # Build payload based on provided parameters
+            if media_type is not None and media_id is not None:
+                # New format: type + id
+                payload = {
+                    "type": media_type,
+                    "id": media_id,
+                    "pos": position,
+                    "temp": temp,
+                }
+            elif url is not None:
+                # Legacy format: url (will be parsed by CyTube)
+                payload = {
+                    "id": url,
+                    "pos": position,
+                    "temp": temp,
+                }
+            else:
+                self._logger.error("Must provide either url or (media_type + media_id)")
+                return False
             
-            self._logger.debug(f"Queueing video: {url} at {position}")
+            self._logger.debug(f"Queueing video: {payload} at {position}")
             await self._connector._socket.emit("queue", payload)
             
             # Audit log playlist operation

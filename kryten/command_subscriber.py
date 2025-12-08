@@ -192,19 +192,13 @@ class CommandSubscriber:
                 # Handle both old format (url) and new format (type + id)
                 if "type" in params and "id" in params:
                     # New format from kryten-py: {"type": "yt", "id": "abc123", "pos": "end"}
-                    media_type = params.get("type")
-                    media_id = params.get("id")
-                    
-                    # For custom URLs (cu), use the ID directly without type prefix
-                    if media_type == "cu":
-                        url = media_id
-                    else:
-                        # Standard format: type:id (e.g., "yt:abc123")
-                        url = f"{media_type}:{media_id}"
-                    
-                    position = params.get("pos", "end")
-                    temp = params.get("temp", False)
-                    return await self._sender.add_video(url=url, position=position, temp=temp)
+                    # Pass type and id directly to CyTube
+                    return await self._sender.add_video(
+                        media_type=params.get("type"),
+                        media_id=params.get("id"),
+                        position=params.get("pos", "end"),
+                        temp=params.get("temp", False)
+                    )
                 else:
                     # Old format: {"url": "yt:abc123", "position": "end", "temp": False}
                     return await self._sender.add_video(**params)
