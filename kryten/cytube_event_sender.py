@@ -190,7 +190,7 @@ class CytubeEventSender:
         try:
             payload = {"uid": uid}
             
-            self._logger.debug(f"Deleting video: {uid}")
+            self._logger.info(f"Deleting video: {uid} with payload: {payload}")
             await self._connector._socket.emit("delete", payload)
             
             # Audit log playlist operation
