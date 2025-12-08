@@ -203,12 +203,8 @@ class CommandSubscriber:
                     # Old format: {"url": "yt:abc123", "position": "end", "temp": False}
                     return await self._sender.add_video(**params)
             elif action == "delete" or action == "delete_video":
-                # Try UID as integer - CyTube might expect int, not string
-                if "uid" in params and isinstance(params["uid"], str):
-                    try:
-                        params["uid"] = int(params["uid"])
-                    except (ValueError, TypeError):
-                        pass  # Keep as string if conversion fails
+                # CyTube expects UID as raw number, not wrapped in object
+                # The event sender will handle conversion to int
                 return await self._sender.delete_video(**params)
             elif action == "move" or action == "move_video":
                 # Ensure UIDs are strings for CyTube compatibility

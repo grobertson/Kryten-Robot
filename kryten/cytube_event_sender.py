@@ -188,10 +188,12 @@ class CytubeEventSender:
             return False
         
         try:
-            payload = {"uid": uid}
+            # CyTube expects the UID directly as a number, not wrapped in an object
+            # See: src/channel/playlist.js handleDelete expects typeof data !== "number"
+            uid_num = int(uid) if isinstance(uid, str) else uid
             
-            self._logger.info(f"Deleting video: {uid} with payload: {payload}")
-            await self._connector._socket.emit("delete", payload)
+            self._logger.info(f"Deleting video with UID: {uid_num}")
+            await self._connector._socket.emit("delete", uid_num)
             
             # Audit log playlist operation
             if self._audit_logger:
