@@ -217,7 +217,7 @@ class StateManager:
             emotes_json = json.dumps(emotes).encode()
             await self._kv_emotes.put("list", emotes_json)
             
-            self._logger.debug(f"Updated emotes: {len(emotes)} emotes")
+            self._logger.info(f"Updated emotes: {len(emotes)} emotes")
         
         except Exception as e:
             self._logger.error(f"Failed to update emotes: {e}", exc_info=True)
@@ -249,7 +249,7 @@ class StateManager:
             playlist_json = json.dumps(playlist).encode()
             await self._kv_playlist.put("items", playlist_json)
             
-            self._logger.debug(f"Set playlist: {len(playlist)} items")
+            self._logger.info(f"Set playlist: {len(playlist)} items")
         
         except Exception as e:
             self._logger.error(f"Failed to set playlist: {e}", exc_info=True)
@@ -417,7 +417,7 @@ class StateManager:
             userlist_json = json.dumps(list(self._users.values())).encode()
             await self._kv_userlist.put("users", userlist_json)
             
-            self._logger.debug(f"Set userlist: {len(self._users)} users")
+            self._logger.info(f"Set userlist: {len(self._users)} users")
         
         except Exception as e:
             self._logger.error(f"Failed to set userlist: {e}", exc_info=True)

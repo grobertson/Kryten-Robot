@@ -238,6 +238,8 @@ async def main(config_path: str) -> int:
                 """Handle events that affect channel state."""
                 async def update_state():
                     try:
+                        logger.debug(f"State callback triggered: {event_name}")
+                        
                         if event_name == "emoteList":
                             await state_manager.update_emotes(payload)
                         elif event_name == "playlist":
