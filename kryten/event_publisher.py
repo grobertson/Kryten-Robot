@@ -182,7 +182,20 @@ class EventPublisher:
                 )
 
                 # Build NATS subject
-                subject = build_event_subject(raw_event)
+                try:
+                    subject = build_event_subject(raw_event)
+                except ValueError as e:
+                    # Log the problematic event and skip it
+                    self.logger.warning(
+                        f"Skipping event with invalid name: {e}",
+                        extra={
+                            "event_name": event_name,
+                            "raw_event_name": event_name,
+                            "payload_preview": str(payload)[:200],
+                            "correlation_id": raw_event.correlation_id,
+                        },
+                    )
+                    continue
 
                 # Publish to NATS with retry
                 await self._publish_with_retry(subject, raw_event)
