@@ -27,6 +27,6 @@
     "chat_messages": "chat-messages.log",
     "command_audit": "command-audit.log"
   },
-  "log_level": "INFO"
+  "log_level": "DEBUG"
   
 } 
