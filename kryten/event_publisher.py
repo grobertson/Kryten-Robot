@@ -172,14 +172,24 @@ class EventPublisher:
                     domain=self.connector.config.domain,
                 )
 
-                # Log received event
-                self.logger.info(
-                    f"Received event: {event_name}",
-                    extra={
-                        "event_name": event_name,
-                        "correlation_id": raw_event.correlation_id,
-                    },
-                )
+                # Log received event (with payload for error messages)
+                if event_name == "errorMsg":
+                    self.logger.error(
+                        f"Received CyTube error: {payload}",
+                        extra={
+                            "event_name": event_name,
+                            "error_payload": payload,
+                            "correlation_id": raw_event.correlation_id,
+                        },
+                    )
+                else:
+                    self.logger.info(
+                        f"Received event: {event_name}",
+                        extra={
+                            "event_name": event_name,
+                            "correlation_id": raw_event.correlation_id,
+                        },
+                    )
 
                 # Build NATS subject
                 try:
