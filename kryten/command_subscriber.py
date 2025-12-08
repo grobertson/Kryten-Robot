@@ -203,16 +203,33 @@ class CommandSubscriber:
                     # Old format: {"url": "yt:abc123", "position": "end", "temp": False}
                     return await self._sender.add_video(**params)
             elif action == "delete" or action == "delete_video":
+                # Ensure UID is string for CyTube compatibility
+                if "uid" in params:
+                    params["uid"] = str(params["uid"])
                 return await self._sender.delete_video(**params)
             elif action == "move" or action == "move_video":
+                # Ensure UIDs are strings for CyTube compatibility
+                if "from" in params:
+                    params["from"] = str(params["from"])
+                if "after" in params:
+                    params["after"] = str(params["after"])
+                # Map 'from' to 'uid' if needed
+                if "from" in params and "uid" not in params:
+                    params["uid"] = params.pop("from")
                 return await self._sender.move_video(**params)
             elif action == "jump" or action == "jump_to":
+                # Ensure UID is string for CyTube compatibility
+                if "uid" in params:
+                    params["uid"] = str(params["uid"])
                 return await self._sender.jump_to(**params)
             elif action == "clear" or action == "clear_playlist":
                 return await self._sender.clear_playlist()
             elif action == "shuffle" or action == "shuffle_playlist":
                 return await self._sender.shuffle_playlist()
             elif action == "set_temp" or action == "setTemp":
+                # Ensure UID is string for CyTube compatibility
+                if "uid" in params:
+                    params["uid"] = str(params["uid"])
                 return await self._sender.set_temp(**params)
             
             # Playback actions
