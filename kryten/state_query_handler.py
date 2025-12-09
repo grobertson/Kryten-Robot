@@ -2,6 +2,9 @@
 
 This module provides a NATS request/reply endpoint that returns the current
 channel state (emotes, playlist, userlist) as JSON.
+
+Follows the unified command pattern: kryten.robot.command
+Commands are dispatched based on the 'command' field in the request.
 """
 
 import json
@@ -12,10 +15,18 @@ from .state_manager import StateManager
 
 
 class StateQueryHandler:
-    """Handle NATS queries for channel state.
+    """Handle NATS queries for channel state via unified command pattern.
     
-    Subscribes to cytube.state.{domain}.{channel} and responds with
-    current emotes, playlist, and userlist.
+    Subscribes to kryten.robot.command and responds to state queries.
+    
+    Supported commands:
+        - state.emotes: Get emote list
+        - state.playlist: Get playlist
+        - state.userlist: Get user list
+        - state.all: Get all state (emotes, playlist, userlist)
+        - state.user: Get specific user info
+        - state.profiles: Get all user profiles
+        - system.health: Get service health status
     
     Attributes:
         state_manager: StateManager instance to query.
@@ -25,7 +36,7 @@ class StateQueryHandler:
     Examples:
         >>> handler = StateQueryHandler(state_manager, nats_client, logger, "cytu.be", "mychannel")
         >>> await handler.start()
-        >>> # Queries to cytube.state.cytu.be.mychannel will return state
+        >>> # Send command to kryten.robot.command with {"service": "robot", "command": "state.emotes"}
         >>> await handler.stop()
     """
     
@@ -72,25 +83,25 @@ class StateQueryHandler:
         return self._running
     
     async def start(self) -> None:
-        """Start listening for state queries."""
+        """Start listening for commands on unified subject."""
         if self._running:
             self._logger.warning("State query handler already running")
             return
         
         self._running = True
         
-        # Subscribe to state query subject
-        subject = f"cytube.state.{self._domain}.{self._channel}"
+        # Subscribe to unified command subject using request-reply pattern
+        subject = "kryten.robot.command"
         
         try:
-            self._subscription = await self._nats.subscribe(
+            self._subscription = await self._nats.subscribe_request_reply(
                 subject,
-                callback=self._handle_query
+                callback=self._handle_command_msg
             )
             self._logger.info(f"State query handler listening on: {subject}")
         
         except Exception as e:
-            self._logger.error(f"Failed to subscribe to state queries: {e}", exc_info=True)
+            self._logger.error(f"Failed to subscribe to command subject: {e}", exc_info=True)
             self._running = False
             raise
     
@@ -111,65 +122,76 @@ class StateQueryHandler:
         self._running = False
         self._logger.info("State query handler stopped")
     
-    async def _handle_query(self, msg) -> None:
-        """Handle incoming state query.
+    async def _handle_command_msg(self, msg) -> None:
+        """Handle incoming command message (actual implementation).
         
         Args:
-            msg: NATS message with optional request params.
+            msg: NATS message object with data and reply subject.
         """
         try:
-            # Parse request (if any parameters provided)
+            # Parse request
             request = {}
             if msg.data:
                 try:
                     request = json.loads(msg.data.decode('utf-8'))
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON: {e}")
             
-            # Get requested state
-            requested_keys = request.get('keys', ['emotes', 'playlist', 'userlist'])
-            username = request.get('username')  # For specific user/profile queries
+            command = request.get('command')
+            if not command:
+                raise ValueError("Missing 'command' field")
             
-            response_data = {}
-            if 'emotes' in requested_keys or not requested_keys:
-                response_data['emotes'] = self._state_manager.get_emotes()
-            if 'playlist' in requested_keys or not requested_keys:
-                response_data['playlist'] = self._state_manager.get_playlist()
-            if 'userlist' in requested_keys or not requested_keys:
-                response_data['userlist'] = self._state_manager.get_userlist()
+            # Check service field for routing (other services can ignore)
+            service = request.get('service')
+            if service and service != 'robot':
+                # Not for us, ignore silently
+                return
             
-            # Handle specific user query
-            if username:
-                response_data['user'] = self._state_manager.get_user(username)
-                response_data['profile'] = self._state_manager.get_user_profile(username)
+            # Dispatch to handler
+            handler_map = {
+                "state.emotes": self._handle_state_emotes,
+                "state.playlist": self._handle_state_playlist,
+                "state.userlist": self._handle_state_userlist,
+                "state.all": self._handle_state_all,
+                "state.user": self._handle_state_user,
+                "state.profiles": self._handle_state_profiles,
+                "system.health": self._handle_system_health,
+            }
             
-            # Handle profiles query
-            if 'profiles' in requested_keys:
-                response_data['profiles'] = self._state_manager.get_all_profiles()
+            handler = handler_map.get(command)
+            if not handler:
+                raise ValueError(f"Unknown command: {command}")
             
-            # Build response
+            # Execute handler
+            result = await handler(request)
+            
+            # Build success response
             response = {
+                "service": "robot",
+                "command": command,
                 "success": True,
-                "data": response_data,
-                "stats": self._state_manager.stats
+                "data": result
             }
             
             # Send response
             if msg.reply:
                 response_bytes = json.dumps(response).encode('utf-8')
                 await self._nats.publish(msg.reply, response_bytes)
-                self._logger.debug(f"Sent state response to {msg.reply}")
+                self._logger.debug(f"Sent response for command '{command}'")
             
             self._queries_processed += 1
         
         except Exception as e:
-            self._logger.error(f"Error handling state query: {e}", exc_info=True)
+            self._logger.error(f"Error handling command: {e}", exc_info=True)
             self._queries_failed += 1
             
             # Send error response if reply subject provided
             if msg.reply:
                 try:
+                    command = request.get('command', 'unknown')
                     error_response = {
+                        "service": "robot",
+                        "command": command,
                         "success": False,
                         "error": str(e)
                     }
@@ -177,6 +199,54 @@ class StateQueryHandler:
                     await self._nats.publish(msg.reply, response_bytes)
                 except Exception as reply_error:
                     self._logger.error(f"Failed to send error response: {reply_error}")
+    
+    async def _handle_state_emotes(self, request: dict) -> dict:
+        """Get emote list."""
+        return {"emotes": self._state_manager.get_emotes()}
+    
+    async def _handle_state_playlist(self, request: dict) -> dict:
+        """Get playlist."""
+        return {"playlist": self._state_manager.get_playlist()}
+    
+    async def _handle_state_userlist(self, request: dict) -> dict:
+        """Get user list."""
+        return {"userlist": self._state_manager.get_userlist()}
+    
+    async def _handle_state_all(self, request: dict) -> dict:
+        """Get all state (emotes, playlist, userlist)."""
+        return {
+            "emotes": self._state_manager.get_emotes(),
+            "playlist": self._state_manager.get_playlist(),
+            "userlist": self._state_manager.get_userlist(),
+            "stats": self._state_manager.stats
+        }
+    
+    async def _handle_state_user(self, request: dict) -> dict:
+        """Get specific user info."""
+        username = request.get('username')
+        if not username:
+            raise ValueError("username required")
+        
+        return {
+            "user": self._state_manager.get_user(username),
+            "profile": self._state_manager.get_user_profile(username)
+        }
+    
+    async def _handle_state_profiles(self, request: dict) -> dict:
+        """Get all user profiles."""
+        return {"profiles": self._state_manager.get_all_profiles()}
+    
+    async def _handle_system_health(self, request: dict) -> dict:
+        """Get service health status."""
+        return {
+            "service": "robot",
+            "status": "healthy" if self._running else "unhealthy",
+            "domain": self._domain,
+            "channel": self._channel,
+            "nats_connected": self._nats.is_connected,
+            "queries_processed": self._queries_processed,
+            "queries_failed": self._queries_failed,
+        }
 
 
 __all__ = ["StateQueryHandler"]

@@ -70,7 +70,8 @@ def print_startup_banner(config_path: str) -> None:
             domain=config.cytube.domain
         )
         event_subject = build_event_subject(example_event)
-        command_subject = build_command_subject(config.cytube.domain, config.cytube.channel, "*")
+        # Build command subject base without wildcards (normalized channel removes special chars)
+        command_base = f"kryten.commands.cytube.{normalize_token(config.cytube.channel)}"
         
         print("=" * 60)
         print(f"Kryten CyTube Connector v{__version__}")
@@ -82,7 +83,7 @@ def print_startup_banner(config_path: str) -> None:
         print("=" * 60)
         print("NATS Subjects:")
         print(f"  Publishing:  {event_subject.rsplit('.', 1)[0]}.*")
-        print(f"  Subscribing: {command_subject}")
+        print(f"  Subscribing: {command_base}.*")
         print("=" * 60)
         print()
     except Exception as e:
@@ -389,7 +390,7 @@ async def main(config_path: str) -> int:
                     channel=config.cytube.channel
                 )
                 await state_query_handler.start()
-                logger.info(f"State query handler listening on: cytube.state.{config.cytube.domain}.{config.cytube.channel}")
+                logger.info("State query handler listening on: kryten.robot.command")
             except Exception as e:
                 logger.error(f"Failed to start state query handler: {e}", exc_info=True)
                 logger.warning("Continuing without state query endpoint")

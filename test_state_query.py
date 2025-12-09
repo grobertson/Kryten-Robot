@@ -1,6 +1,7 @@
 """Test State Query Endpoint
 
 Quick test script to query the new state endpoint from Kryten-Robot.
+Uses the unified command pattern: kryten.robot.command
 """
 
 import asyncio
@@ -9,7 +10,7 @@ from nats.aio.client import Client as NATS
 
 
 async def test_state_query():
-    """Test querying state from Kryten-Robot."""
+    """Test querying state from Kryten-Robot via unified command pattern."""
     nc = NATS()
     
     try:
@@ -17,12 +18,18 @@ async def test_state_query():
         await nc.connect("nats://localhost:4222")
         print("Connected to NATS")
         
-        # Query the state endpoint
-        subject = "cytube.state.cytu.be.roboMrRoboto"
+        # Query the unified command endpoint
+        subject = "kryten.robot.command"
         print(f"Querying: {subject}")
         
-        # Send request
-        response = await nc.request(subject, b'{}', timeout=5.0)
+        # Send request for all state
+        request = {
+            "service": "robot",
+            "command": "state.all"
+        }
+        request_bytes = json.dumps(request).encode('utf-8')
+        
+        response = await nc.request(subject, request_bytes, timeout=5.0)
         
         # Parse response
         data = json.loads(response.data.decode('utf-8'))

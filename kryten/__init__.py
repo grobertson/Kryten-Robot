@@ -15,7 +15,12 @@ def _read_version() -> str:
         Semantic version string, or "0.1.0-dev" if file unavailable.
     """
     try:
-        version_file = Path(__file__).parent.parent.parent / "VERSION"
+        # Try package root first (for installed package)
+        version_file = Path(__file__).parent.parent / "VERSION"
+        if not version_file.exists():
+            # Fallback to repo root (for development)
+            version_file = Path(__file__).parent.parent.parent / "VERSION"
+        
         version_text = version_file.read_text(encoding="utf-8")
         return version_text.strip()
     except (FileNotFoundError, OSError, UnicodeDecodeError):

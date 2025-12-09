@@ -25,6 +25,7 @@
   },
   "logging": {
     "base_path": "./logs",
+    "_comment": "For systemd service, use: /opt/kryten/logs",
     "admin_operations": "admin-operations.log",
     "playlist_operations": "playlist-operations.log",
     "chat_messages": "chat-messages.log",

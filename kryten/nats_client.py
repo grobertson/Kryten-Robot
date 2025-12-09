@@ -6,7 +6,7 @@ lifecycle management, automatic reconnection, and error handling.
 
 import asyncio
 import logging
-from typing import Dict, Optional, Callable, Awaitable
+from typing import Any, Dict, Optional, Callable, Awaitable
 
 import nats
 from nats.aio.client import Client as NATS
@@ -276,6 +276,62 @@ class NatsClient:
 
             self.logger.debug(
                 "Subscribed to NATS subject",
+                extra={"subject": subject}
+            )
+
+            return subscription
+
+        except Exception as e:
+            self._errors += 1
+            self.logger.error(
+                "Failed to subscribe to subject",
+                extra={"subject": subject, "error": str(e)}
+            )
+            raise
+
+    async def subscribe_request_reply(
+        self,
+        subject: str,
+        callback: Callable[[Any], Awaitable[None]]
+    ) -> Subscription:
+        """Subscribe to NATS subject for request-reply pattern.
+
+        Unlike regular subscribe, this passes the full NATS Msg object to the callback,
+        allowing access to msg.reply for sending responses.
+
+        Args:
+            subject: NATS subject pattern (e.g., "kryten.robot.command").
+            callback: Async callback function(msg: Msg) that receives full message.
+
+        Returns:
+            Subscription object that can be used to unsubscribe.
+
+        Raises:
+            NotConnectedError: If not connected to NATS.
+            ValueError: If subject is empty or callback is not callable.
+
+        Examples:
+            >>> async def handler(msg):
+            ...     request = json.loads(msg.data.decode())
+            ...     response = {"result": "ok"}
+            ...     await nats.publish(msg.reply, json.dumps(response).encode())
+            >>> sub = await client.subscribe_request_reply("kryten.robot.command", handler)
+        """
+        if not self.is_connected:
+            raise NotConnectedError("Not connected to NATS server")
+
+        if not subject:
+            raise ValueError("Subject cannot be empty")
+
+        if not callable(callback):
+            raise ValueError("Callback must be callable")
+
+        try:
+            # Pass the full msg object directly to callback
+            subscription = await self._nc.subscribe(subject, cb=callback)
+
+            self.logger.debug(
+                "Subscribed to NATS subject (request-reply)",
                 extra={"subject": subject}
             )
 

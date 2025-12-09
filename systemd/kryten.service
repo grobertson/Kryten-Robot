@@ -1,6 +1,6 @@
 [Unit]
 Description=Kryten CyTube Connector
-Documentation=https://github.com/yourusername/kryten-robot
+Documentation=https://github.com/grobertson/Kryten-Robot
 After=network.target nats.service
 Wants=nats.service
 
@@ -8,11 +8,11 @@ Wants=nats.service
 Type=simple
 User=kryten
 Group=kryten
-WorkingDirectory=/opt/kryten
-Environment="PATH=/opt/kryten/venv/bin:/usr/local/bin:/usr/bin:/bin"
+WorkingDirectory=/opt/kryten/Kryten-Robot
+Environment="PATH=/opt/kryten/Kryten-Robot/venv/bin:/usr/local/bin:/usr/bin:/bin"
 
 # Main service command
-ExecStart=/opt/kryten/venv/bin/python -m kryten /opt/kryten/config.json
+ExecStart=/opt/kryten/Kryten-Robot/venv/bin/python -m kryten /opt/kryten/etc/Kryten-Robot/config.json
 
 # Restart policy
 Restart=on-failure
@@ -27,9 +27,12 @@ CPUQuota=50%
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
+# ProtectSystem can cause NAMESPACE errors if paths don't exist
+# Disabled for now - can be enabled once deployment is stable
+# ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/opt/kryten/logs
+# Ensure logs directory exists and is writable
+RuntimeDirectoryPreserve=yes
 
 # Logging
 StandardOutput=journal

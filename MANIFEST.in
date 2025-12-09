@@ -1,0 +1,22 @@
+include VERSION
+include LICENSE
+include README.md
+include requirements.txt
+include pytest.ini
+include install.sh
+recursive-include kryten *.py
+recursive-include systemd *.service
+recursive-include systemd README.md
+include KRYTEN_ARCHITECTURE.md
+include STATE_QUERY_IMPLEMENTATION.md
+include LIFECYCLE_EVENTS.md
+prune tests
+prune .venv
+prune .pytest_cache
+prune logs
+prune llm
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude *.log
+global-exclude config.json
+global-exclude config-*.json

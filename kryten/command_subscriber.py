@@ -192,10 +192,25 @@ class CommandSubscriber:
                 # Handle both old format (url) and new format (type + id)
                 if "type" in params and "id" in params:
                     # New format from kryten-py: {"type": "yt", "id": "abc123", "pos": "end"}
-                    # Pass type and id directly to CyTube
+                    # Check if this is a grindhouse URL that needs transformation
+                    media_id = params.get("id")
+                    media_type = params.get("type")
+                    
+                    # If type is "cu" and id looks like a grindhouse view URL, transform it
+                    if media_type == "cu" and isinstance(media_id, str) and "420grindhouse.com/view?m=" in media_id:
+                        # Transform to custom media format with JSON API URL
+                        import re
+                        pattern = r'https?://(?:www\.)?420grindhouse\.com/view\?m=([A-Za-z0-9_-]+)'
+                        match = re.match(pattern, media_id)
+                        if match:
+                            media_id_code = match.group(1)
+                            media_id = f"https://www.420grindhouse.com/api/v1/media/cytube/{media_id_code}.json?format=json"
+                            media_type = "cm"
+                            self._logger.info(f"Transformed grindhouse URL in command subscriber: type={media_type}, id={media_id}")
+                    
                     return await self._sender.add_video(
-                        media_type=params.get("type"),
-                        media_id=params.get("id"),
+                        media_type=media_type,
+                        media_id=media_id,
                         position=params.get("pos", "end"),
                         temp=params.get("temp", False)
                     )

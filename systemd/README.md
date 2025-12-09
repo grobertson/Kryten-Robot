@@ -2,6 +2,29 @@
 
 This directory contains systemd service files for running Kryten as a system service.
 
+## Directory Structure
+
+Kryten uses a standardized directory layout under `/opt/kryten`:
+
+```
+/opt/kryten/
+├── Kryten-Robot/          # Main application
+│   ├── venv/              # Python virtual environment
+│   ├── kryten/            # Python package
+│   └── ...
+├── etc/                   # Configuration files
+│   └── kryten-robot-config.json
+├── logs/                  # All log files
+│   └── kryten-robot.log
+└── (other kryten-* services can follow the same pattern)
+```
+
+**Benefits:**
+- Centralized configuration in `/opt/kryten/etc`
+- All logs in one location: `/opt/kryten/logs`
+- Easy to add more kryten services with consistent naming
+- Clear separation between code, config, and logs
+
 ## Files
 
 - **kryten.service** - Main Kryten connector service
@@ -40,7 +63,7 @@ sudo mkdir -p /var/lib/nats
 sudo chown nats:nats /var/lib/nats
 
 # Kryten directories
-sudo mkdir -p /opt/kryten/{logs,venv}
+sudo mkdir -p /opt/kryten/{Kryten-Robot,etc,logs}
 sudo chown -R kryten:kryten /opt/kryten
 ```
 
@@ -74,9 +97,10 @@ EOF
 ### 5. Install Kryten
 
 ```bash
-# Clone repository (or copy files)
+# Clone repository
 cd /opt/kryten
-sudo -u kryten git clone https://github.com/yourusername/kryten-robot .
+sudo -u kryten git clone https://github.com/grobertson/kryten-robot Kryten-Robot
+cd Kryten-Robot
 
 # Create virtual environment
 sudo -u kryten python3 -m venv venv
@@ -84,8 +108,8 @@ sudo -u kryten venv/bin/pip install --upgrade pip
 sudo -u kryten venv/bin/pip install -e .
 
 # Copy and configure config file
-sudo -u kryten cp kryten/config.example.json config.json
-sudo -u kryten nano config.json  # Edit with your settings
+sudo -u kryten cp kryten/config.example.json /opt/kryten/etc/kryten-robot-config.json
+sudo nano /opt/kryten/etc/kryten-robot-config.json  # Edit with your settings
 ```
 
 ## Installation

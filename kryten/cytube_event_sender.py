@@ -105,6 +105,35 @@ class CytubeEventSender:
     # Playlist Methods
     # ========================================================================
     
+    def _transform_grindhouse_url(self, url: str) -> tuple[str, str, str]:
+        """Transform 420grindhouse.com view URLs to custom media format.
+        
+        Converts URLs like:
+            https://www.420grindhouse.com/view?m=CcrJn8WAa
+        To:
+            type="cm", id="https://www.420grindhouse.com/api/v1/media/cytube/CcrJn8WAa.json?format=json"
+        
+        Args:
+            url: Original URL to transform.
+        
+        Returns:
+            Tuple of (media_type, media_id, original_url).
+            If not a grindhouse URL, returns (None, None, url).
+        """
+        import re
+        
+        # Match 420grindhouse.com view URLs with m= parameter
+        pattern = r'https?://(?:www\.)?420grindhouse\.com/view\?m=([A-Za-z0-9_-]+)'
+        match = re.match(pattern, url)
+        
+        if match:
+            media_id = match.group(1)
+            json_url = f"https://www.420grindhouse.com/api/v1/media/cytube/{media_id}.json?format=json"
+            self._logger.info(f"Transformed grindhouse URL: {url} -> type=cm, id={json_url}")
+            return ("cm", json_url, url)
+        
+        return (None, None, url)
+    
     async def add_video(
         self,
         url: str = None,
@@ -144,17 +173,31 @@ class CytubeEventSender:
                     "temp": temp,
                 }
             elif url is not None:
-                # Legacy format: url (will be parsed by CyTube)
-                payload = {
-                    "id": url,
-                    "pos": position,
-                    "temp": temp,
-                }
+                # Check if URL needs transformation (420grindhouse.com)
+                transformed_type, transformed_id, original_url = self._transform_grindhouse_url(url)
+                
+                self._logger.info(f"URL transformation result: type={transformed_type}, id={transformed_id}, original={original_url}")
+                
+                if transformed_type:
+                    # Use custom media format for transformed URLs
+                    payload = {
+                        "type": transformed_type,
+                        "id": transformed_id,
+                        "pos": position,
+                        "temp": temp,
+                    }
+                else:
+                    # Legacy format: url (will be parsed by CyTube)
+                    payload = {
+                        "id": original_url,
+                        "pos": position,
+                        "temp": temp,
+                    }
             else:
                 self._logger.error("Must provide either url or (media_type + media_id)")
                 return False
             
-            self._logger.debug(f"Queueing video: {payload} at {position}")
+            self._logger.info(f"Queueing video with payload: {payload}")
             await self._connector._socket.emit("queue", payload)
             
             # Audit log playlist operation
