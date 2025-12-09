@@ -196,6 +196,8 @@ Available commands:
 - `state.profiles` - Get all user profiles
 - `state.all` - Get complete channel state
 - `system.health` - Get system health status
+- `system.channels` - Get list of connected channels
+- `system.version` - Get Kryten-Robot version
 
 ## Configuration Reference
 

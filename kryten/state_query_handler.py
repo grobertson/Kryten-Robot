@@ -28,6 +28,7 @@ class StateQueryHandler:
         - state.profiles: Get all user profiles
         - system.health: Get service health status
         - system.channels: Get list of connected channels
+        - system.version: Get Kryten-Robot version
     
     Attributes:
         state_manager: StateManager instance to query.
@@ -158,6 +159,7 @@ class StateQueryHandler:
                 "state.profiles": self._handle_state_profiles,
                 "system.health": self._handle_system_health,
                 "system.channels": self._handle_system_channels,
+                "system.version": self._handle_system_version,
             }
             
             handler = handler_map.get(command)
@@ -268,6 +270,21 @@ class StateQueryHandler:
                     "connected": self._nats.is_connected
                 }
             ]
+        }
+    
+    async def _handle_system_version(self, request: dict) -> dict:
+        """Get Kryten-Robot version information.
+        
+        Returns version string for client applications to check compatibility.
+        Clients can use this to enforce minimum server version requirements.
+        
+        Returns:
+            Dictionary with 'version' key containing semantic version string.
+        """
+        from . import __version__
+        
+        return {
+            "version": __version__
         }
 
 
