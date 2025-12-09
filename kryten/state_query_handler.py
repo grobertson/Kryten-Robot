@@ -27,6 +27,7 @@ class StateQueryHandler:
         - state.user: Get specific user info
         - state.profiles: Get all user profiles
         - system.health: Get service health status
+        - system.channels: Get list of connected channels
     
     Attributes:
         state_manager: StateManager instance to query.
@@ -156,6 +157,7 @@ class StateQueryHandler:
                 "state.user": self._handle_state_user,
                 "state.profiles": self._handle_state_profiles,
                 "system.health": self._handle_system_health,
+                "system.channels": self._handle_system_channels,
             }
             
             handler = handler_map.get(command)
@@ -246,6 +248,26 @@ class StateQueryHandler:
             "nats_connected": self._nats.is_connected,
             "queries_processed": self._queries_processed,
             "queries_failed": self._queries_failed,
+        }
+    
+    async def _handle_system_channels(self, request: dict) -> dict:
+        """Get list of connected channels.
+        
+        Returns information about all channels this robot instance is connected to.
+        Currently supports single-channel mode, but structured for future multi-channel support.
+        
+        Returns:
+            Dictionary with 'channels' key containing list of channel info dicts.
+            Each channel dict contains: domain, channel, connected status.
+        """
+        return {
+            "channels": [
+                {
+                    "domain": self._domain,
+                    "channel": self._channel,
+                    "connected": self._nats.is_connected
+                }
+            ]
         }
 
 
