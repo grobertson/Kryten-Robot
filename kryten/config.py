@@ -133,6 +133,30 @@ class LoggingConfig:
 
 
 @dataclass
+class StateCountingConfig:
+    """Configuration for state counting and filtering.
+    
+    Attributes:
+        users_exclude_afk: Exclude AFK users from count. Default: False.
+        users_min_rank: Minimum rank to include in count (0=all). Default: 0.
+        playlist_exclude_temp: Exclude temporary items from count. Default: False.
+        playlist_max_duration: Maximum duration (seconds) to include (0=no limit). Default: 0.
+        emotes_only_enabled: Only count enabled emotes. Default: False.
+        
+    Examples:
+        >>> cfg = StateCountingConfig(users_exclude_afk=True, users_min_rank=1)
+        >>> print(cfg.users_exclude_afk)
+        True
+    """
+    
+    users_exclude_afk: bool = False
+    users_min_rank: int = 0
+    playlist_exclude_temp: bool = False
+    playlist_max_duration: int = 0
+    emotes_only_enabled: bool = False
+
+
+@dataclass
 class KrytenConfig:
     """Top-level configuration for Kryten connector.
 
@@ -144,6 +168,7 @@ class KrytenConfig:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
             Default: "INFO".
         logging: Specialized logging configuration.
+        state_counting: State counting and filtering configuration.
 
     Examples:
         >>> cytube = CytubeConfig(domain="cytu.be", channel="test")
@@ -159,6 +184,7 @@ class KrytenConfig:
     health: HealthConfig = field(default_factory=HealthConfig)
     log_level: str = "INFO"
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    state_counting: StateCountingConfig = field(default_factory=StateCountingConfig)
 
 
 def _normalize_string(value: str) -> str:
@@ -442,6 +468,19 @@ def load_config(path: Union[Path, str]) -> KrytenConfig:
                 chat_messages=logging_data.get("chat_messages", "chat-messages.log"),
                 command_audit=logging_data.get("command_audit", "command-audit.log"),
             )
+    
+    # Load state counting configuration
+    state_counting_config = StateCountingConfig()
+    if "state_counting" in data:
+        state_data = data["state_counting"]
+        if isinstance(state_data, dict):
+            state_counting_config = StateCountingConfig(
+                users_exclude_afk=state_data.get("users_exclude_afk", False),
+                users_min_rank=state_data.get("users_min_rank", 0),
+                playlist_exclude_temp=state_data.get("playlist_exclude_temp", False),
+                playlist_max_duration=state_data.get("playlist_max_duration", 0),
+                emotes_only_enabled=state_data.get("emotes_only_enabled", False),
+            )
 
     return KrytenConfig(
         cytube=cytube,
@@ -450,6 +489,7 @@ def load_config(path: Union[Path, str]) -> KrytenConfig:
         health=health,
         log_level=log_level,
         logging=logging_config,
+        state_counting=state_counting_config,
     )
 
 
@@ -459,6 +499,7 @@ __all__ = [
     "CommandsConfig",
     "HealthConfig",
     "LoggingConfig",
+    "StateCountingConfig",
     "KrytenConfig",
     "load_config",
 ]

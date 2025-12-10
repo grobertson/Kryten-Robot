@@ -183,17 +183,24 @@ if ! check_critical_packages "$VENV_PYTHON"; then
     fi
 fi
 
-# Step 5: Set PYTHONPATH to ensure local modules are found
+# Step 5: Clear PYTHONPATH to avoid conflicts, then set for local modules
+export PYTHONPATH=""
 export PYTHONPATH="$SCRIPT_DIR"
 
 # Step 6: Run the application
 echo ""
 echo -e "\033[32mStarting Kryten-Robot...\033[0m"
-echo -e "\033[90mConfig: $CONFIG_PATH\033[0m"
+if [[ -f "$CONFIG_PATH" ]]; then
+    echo -e "\033[90mConfig: $CONFIG_PATH\033[0m"
+    CONFIG_ARG="--config $CONFIG_PATH"
+else
+    echo -e "\033[90mUsing default config paths\033[0m"
+    CONFIG_ARG=""
+fi
 if [[ -n "$KRYTEN_LOG_LEVEL" ]]; then
     echo -e "\033[90mLog Level: $KRYTEN_LOG_LEVEL\033[0m"
 fi
 echo -e "\033[90mPress Ctrl+C to stop\033[0m"
 echo ""
 
-exec "$VENV_PYTHON" -m kryten "$CONFIG_PATH"
+exec $VENV_PYTHON -m kryten $CONFIG_ARG

@@ -10,6 +10,7 @@ from typing import Dict, Any
 
 from .cytube_event_sender import CytubeEventSender
 from .nats_client import NatsClient
+from .stats_tracker import StatsTracker
 
 
 class CommandSubscriber:
@@ -61,22 +62,36 @@ class CommandSubscriber:
         
         # Metrics tracking
         self._commands_processed = 0
+        self._commands_succeeded = 0
         self._commands_failed = 0
+        
+        # Rate tracking
+        self._stats_tracker = StatsTracker()
     
     @property
-    def stats(self) -> Dict[str, int]:
+    def stats(self) -> Dict[str, Any]:
         """Get command processing statistics.
         
         Returns:
-            Dictionary with commands_processed and commands_failed counts.
+            Dictionary with commands_processed, commands_succeeded, 
+            commands_failed counts, and rate information.
         
         Examples:
             >>> stats = subscriber.stats
             >>> print(f"Processed: {stats['commands_processed']}")
+            >>> print(f"Success rate: {stats['commands_succeeded'] / stats['commands_processed']}")
+            >>> print(f"Rate (1m): {stats['rate_1min']:.2f}/sec")
         """
+        last_time, last_type = self._stats_tracker.get_last()
+        
         return {
             "commands_processed": self._commands_processed,
+            "commands_succeeded": self._commands_succeeded,
             "commands_failed": self._commands_failed,
+            "rate_1min": self._stats_tracker.get_rate(60),
+            "rate_5min": self._stats_tracker.get_rate(300),
+            "last_command_time": last_time,
+            "last_command_type": last_type,
         }
     
     @property
@@ -156,8 +171,11 @@ class CommandSubscriber:
             # Route to appropriate sender method
             success = await self._route_command(action, params)
             
+            # Update metrics
+            self._commands_processed += 1
             if success:
-                self._commands_processed += 1
+                self._commands_succeeded += 1
+                self._stats_tracker.record(action)
                 self._logger.debug(f"Command '{action}' executed successfully")
             else:
                 self._commands_failed += 1

@@ -66,8 +66,14 @@ try {
     Write-Host "Press Ctrl+C to stop" -ForegroundColor Gray
     Write-Host ""
 
+    # Clear PYTHONPATH to avoid conflicts with development versions
+    $env:PYTHONPATH = ""
+    
     # Build Python command arguments
-    $pythonArgs = @("-m", "kryten", $ConfigFile)
+    $pythonArgs = @("-m", "kryten")
+    if (Test-Path $ConfigFile) {
+        $pythonArgs += @("--config", $ConfigFile)
+    }
     
     # Set log level environment variable if specified
     if ($LogLevel) {

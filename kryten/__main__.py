@@ -5,9 +5,14 @@ as a standalone service. It coordinates component initialization, handles
 signals for graceful shutdown, and manages the application lifecycle.
 
 Usage:
-    python -m bot.kryten config.json
-    python -m bot.kryten --version
-    python -m bot.kryten --help
+    python -m kryten
+    python -m kryten --config /path/to/config.json
+    python -m kryten --version
+    python -m kryten --help
+
+Default config locations (searched in order):
+    - /etc/kryten/kryten-robot/config.json
+    - ./config.json
 
 Exit Codes:
     0: Clean shutdown
@@ -39,6 +44,7 @@ from . import (
     load_config,
     setup_logging,
 )
+from .application_state import ApplicationState
 from .audit_logger import create_audit_logger
 from .errors import ConnectionError as KrytenConnectionError
 
@@ -124,7 +130,7 @@ async def main(config_path: str) -> int:
     cmd_subscriber: Optional[CommandSubscriber] = None
     health_monitor: Optional[HealthMonitor] = None
     watchdog: Optional[ConnectionWatchdog] = None
-    shutdown_event = asyncio.Event()
+    app_state: Optional[ApplicationState] = None  # Created after config load
     
     def signal_handler(signum: int, frame) -> None:
         """Handle shutdown signals (SIGINT, SIGTERM).
@@ -137,7 +143,8 @@ async def main(config_path: str) -> int:
             logger.info(f"Received {signame}, initiating graceful shutdown")
         else:
             print(f"\nReceived {signame}, initiating graceful shutdown...")
-        shutdown_event.set()
+        if app_state:
+            app_state.shutdown_event.set()
     
     try:
         # REQ-002: Load configuration
@@ -177,6 +184,10 @@ async def main(config_path: str) -> int:
         logger.info(f"  - Chat messages: {config.logging.chat_messages}")
         logger.info(f"  - Command audit: {config.logging.command_audit}")
         
+        # Create ApplicationState for system management
+        app_state = ApplicationState(config_path=config_path, config=config)
+        logger.info("Application state initialized")
+        
         # REQ-006: Register signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -188,6 +199,7 @@ async def main(config_path: str) -> int:
         
         try:
             await nats_client.connect()
+            app_state.nats_client = nats_client
             logger.info("Successfully connected to NATS")
         except Exception as e:
             # AC-003: NATS connection failure exits with code 1
@@ -209,7 +221,7 @@ async def main(config_path: str) -> int:
             delay = data.get('delay_seconds', 5)
             logger.warning(f"Restart notice received, shutting down in {delay}s")
             await asyncio.sleep(delay)
-            shutdown_event.set()
+            app_state.shutdown_event.set()
         
         lifecycle.on_restart_notice(handle_restart_notice)
         
@@ -220,8 +232,14 @@ async def main(config_path: str) -> int:
         # This ensures callbacks are ready when initial state events arrive
         try:
             logger.info("Starting state manager")
-            state_manager = StateManager(nats_client, config.cytube.channel, logger)
+            state_manager = StateManager(
+                nats_client, 
+                config.cytube.channel, 
+                logger,
+                counting_config=config.state_counting
+            )
             await state_manager.start()
+            app_state.state_manager = state_manager
             logger.info("State manager started - ready to persist channel state")
         except RuntimeError as e:
             logger.error(f"Failed to start state manager: {e}")
@@ -231,6 +249,7 @@ async def main(config_path: str) -> int:
         # Connect to CyTube (automatically joins channel and authenticates)
         logger.info(f"Connecting to CyTube: {config.cytube.domain}/{config.cytube.channel}")
         connector = CytubeConnector(config.cytube, logger)
+        app_state.connector = connector
         
         # Register state callbacks BEFORE connecting
         # so initial state events from _request_initial_state() are captured
@@ -363,6 +382,7 @@ async def main(config_path: str) -> int:
             retry_attempts=3,
             retry_delay=1.0
         )
+        app_state.event_publisher = publisher
         
         # Start publisher task
         publisher_task = asyncio.create_task(publisher.run())
@@ -387,7 +407,8 @@ async def main(config_path: str) -> int:
                     nats_client=nats_client,
                     logger=logger,
                     domain=config.cytube.domain,
-                    channel=config.cytube.channel
+                    channel=config.cytube.channel,
+                    app_state=app_state
                 )
                 await state_query_handler.start()
                 logger.info("State query handler listening on: kryten.robot.command")
@@ -476,7 +497,7 @@ async def main(config_path: str) -> int:
         )
         
         # Wait for shutdown signal
-        await shutdown_event.wait()
+        await app_state.shutdown_event.wait()
         
         # REQ-007: Shutdown sequence (reverse order)
         logger.info("Beginning graceful shutdown")
@@ -669,14 +690,19 @@ def cli() -> None:
     """
     # PAT-001: Use argparse for CLI
     parser = argparse.ArgumentParser(
-        prog="python -m bot.kryten",
+        prog="python -m kryten",
         description="Kryten CyTube Connector - Bridges CyTube chat to NATS event bus",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m bot.kryten config.json
-  python -m bot.kryten --version
-  python -m bot.kryten --help
+  python -m kryten                             # Use default config locations
+  python -m kryten --config /path/to/config.json
+  python -m kryten --version
+  python -m kryten --help
+
+Default config locations (searched in order):
+  - /etc/kryten/kryten-robot/config.json
+  - ./config.json
 
 Signals:
   SIGINT (Ctrl+C): Graceful shutdown
@@ -695,17 +721,41 @@ Exit Codes:
         version=f"Kryten v{__version__}"
     )
     
-    # REQ-002: Configuration file argument
+    # REQ-002: Configuration file argument (optional with default)
     parser.add_argument(
-        "config",
+        "--config",
+        "-c",
         type=str,
-        help="Path to JSON configuration file"
+        help="Path to JSON configuration file (default: /etc/kryten/kryten-robot/config.json or ./config.json)"
     )
     
     args = parser.parse_args()
     
-    # GUD-002: Validate configuration file exists
-    config_path = Path(args.config)
+    # GUD-002: Determine configuration file path
+    if args.config:
+        config_path = Path(args.config)
+    else:
+        # Try default locations in order
+        default_paths = [
+            Path("/etc/kryten/kryten-robot/config.json"),
+            Path("config.json")
+        ]
+        
+        config_path = None
+        for path in default_paths:
+            if path.exists() and path.is_file():
+                config_path = path
+                break
+        
+        if not config_path:
+            print("ERROR: No configuration file found.", file=sys.stderr)
+            print(f"  Searched:", file=sys.stderr)
+            for path in default_paths:
+                print(f"    - {path}", file=sys.stderr)
+            print(f"  Use --config to specify a custom path.", file=sys.stderr)
+            sys.exit(1)
+    
+    # Validate configuration file exists
     if not config_path.exists():
         print(f"ERROR: Configuration file not found: {config_path}", file=sys.stderr)
         sys.exit(1)

@@ -43,6 +43,7 @@ class StateManager:
         nats_client: NatsClient,
         channel: str,
         logger: logging.Logger,
+        counting_config=None,
     ):
         """Initialize state manager.
         
@@ -50,10 +51,12 @@ class StateManager:
             nats_client: NATS client instance.
             channel: CyTube channel name.
             logger: Logger for structured output.
+            counting_config: Optional StateCountingConfig for filtering counts.
         """
         self._nats = nats_client
         self._channel = channel
         self._logger = logger
+        self._counting_config = counting_config
         self._running = False
         
         # KV bucket handles
@@ -75,17 +78,113 @@ class StateManager:
         """
         return self._running
     
+    def users_count(self) -> int:
+        """Get count of users with optional filtering.
+        
+        Applies filters from counting_config:
+        - users_exclude_afk: Exclude AFK users
+        - users_min_rank: Minimum rank to include
+        
+        Returns:
+            Filtered count of users.
+            
+        Examples:
+            >>> count = manager.users_count()
+            >>> print(f"Active users: {count}")
+        """
+        if not self._counting_config:
+            return len(self._users)
+        
+        count = 0
+        for user in self._users.values():
+            # Check rank filter
+            user_rank = user.get("rank", 0)
+            if user_rank < self._counting_config.users_min_rank:
+                continue
+            
+            # Check AFK filter
+            if self._counting_config.users_exclude_afk:
+                meta = user.get("meta", {})
+                if meta.get("afk", False):
+                    continue
+            
+            count += 1
+        
+        return count
+    
+    def playlist_count(self) -> int:
+        """Get count of playlist items with optional filtering.
+        
+        Applies filters from counting_config:
+        - playlist_exclude_temp: Exclude temporary items
+        - playlist_max_duration: Maximum duration in seconds (0=no limit)
+        
+        Returns:
+            Filtered count of playlist items.
+            
+        Examples:
+            >>> count = manager.playlist_count()
+            >>> print(f"Playlist items: {count}")
+        """
+        if not self._counting_config:
+            return len(self._playlist)
+        
+        count = 0
+        for item in self._playlist:
+            # Check temp filter
+            if self._counting_config.playlist_exclude_temp:
+                if item.get("temp", False):
+                    continue
+            
+            # Check duration filter
+            if self._counting_config.playlist_max_duration > 0:
+                media = item.get("media", {})
+                duration = media.get("seconds", 0)
+                if duration > self._counting_config.playlist_max_duration:
+                    continue
+            
+            count += 1
+        
+        return count
+    
+    def emotes_count(self) -> int:
+        """Get count of emotes with optional filtering.
+        
+        Applies filters from counting_config:
+        - emotes_only_enabled: Only count enabled emotes
+        
+        Returns:
+            Filtered count of emotes.
+            
+        Examples:
+            >>> count = manager.emotes_count()
+            >>> print(f"Emotes: {count}")
+        """
+        if not self._counting_config:
+            return len(self._emotes)
+        
+        if not self._counting_config.emotes_only_enabled:
+            return len(self._emotes)
+        
+        # Count only enabled emotes
+        count = 0
+        for emote in self._emotes:
+            if not emote.get("disabled", False):
+                count += 1
+        
+        return count
+    
     @property
     def stats(self) -> Dict[str, int]:
-        """Get state statistics.
+        """Get state statistics using configured counting filters.
         
         Returns:
             Dictionary with emote_count, playlist_count, user_count.
         """
         return {
-            "emote_count": len(self._emotes),
-            "playlist_count": len(self._playlist),
-            "user_count": len(self._users),
+            "emote_count": self.emotes_count(),
+            "playlist_count": self.playlist_count(),
+            "user_count": self.users_count(),
         }
     
     async def start(self) -> None:

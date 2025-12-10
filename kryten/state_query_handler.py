@@ -7,11 +7,21 @@ Follows the unified command pattern: kryten.robot.command
 Commands are dispatched based on the 'command' field in the request.
 """
 
+import asyncio
 import json
 import logging
+from datetime import datetime, timezone
+from typing import Optional
+
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
 
 from .nats_client import NatsClient
 from .state_manager import StateManager
+from .application_state import ApplicationState
 
 
 class StateQueryHandler:
@@ -29,14 +39,18 @@ class StateQueryHandler:
         - system.health: Get service health status
         - system.channels: Get list of connected channels
         - system.version: Get Kryten-Robot version
+        - system.stats: Get comprehensive runtime statistics
+        - system.config: Get current configuration (passwords redacted)
+        - system.ping: Simple alive check
     
     Attributes:
         state_manager: StateManager instance to query.
         nats_client: NATS client for subscriptions.
         logger: Logger instance.
+        app_state: ApplicationState for runtime information.
     
     Examples:
-        >>> handler = StateQueryHandler(state_manager, nats_client, logger, "cytu.be", "mychannel")
+        >>> handler = StateQueryHandler(state_manager, nats_client, logger, "cytu.be", "mychannel", app_state)
         >>> await handler.start()
         >>> # Send command to kryten.robot.command with {"service": "robot", "command": "state.emotes"}
         >>> await handler.stop()
@@ -49,6 +63,7 @@ class StateQueryHandler:
         logger: logging.Logger,
         domain: str,
         channel: str,
+        app_state: Optional[ApplicationState] = None,
     ):
         """Initialize state query handler.
         
@@ -58,12 +73,14 @@ class StateQueryHandler:
             logger: Logger for structured output.
             domain: CyTube domain name.
             channel: CyTube channel name.
+            app_state: ApplicationState for system management features.
         """
         self._state_manager = state_manager
         self._nats = nats_client
         self._logger = logger
         self._domain = domain
         self._channel = channel
+        self._app_state = app_state
         self._running = False
         self._subscription = None
         
@@ -160,6 +177,11 @@ class StateQueryHandler:
                 "system.health": self._handle_system_health,
                 "system.channels": self._handle_system_channels,
                 "system.version": self._handle_system_version,
+                "system.stats": self._handle_system_stats,
+                "system.config": self._handle_system_config,
+                "system.ping": self._handle_system_ping,
+                "system.shutdown": self._handle_system_shutdown,
+                "system.reload": self._handle_system_reload,
             }
             
             handler = handler_map.get(command)
@@ -286,6 +308,392 @@ class StateQueryHandler:
         return {
             "version": __version__
         }
+    
+    async def _handle_system_stats(self, request: dict) -> dict:
+        """Get comprehensive runtime statistics.
+        
+        Returns detailed statistics including event rates, command execution,
+        connection status, memory usage, and state information.
+        
+        Returns:
+            Dictionary containing nested statistics:
+                - uptime_seconds: Total uptime
+                - events: Published events and rates
+                - commands: Command execution stats
+                - queries: Query handler stats
+                - connections: CyTube and NATS connection info
+                - state: Channel state (users, playlist, emotes)
+                - memory: Process memory usage
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for stats")
+        
+        # Calculate uptime
+        uptime = self._app_state.get_uptime()
+        
+        # Get event publisher stats
+        events_stats = {}
+        if self._app_state.event_publisher:
+            pub_stats = self._app_state.event_publisher.stats
+            last_time = pub_stats.get('last_event_time')
+            last_type = pub_stats.get('last_event_type')
+            events_stats = {
+                "published": pub_stats.get('events_published', 0),
+                "failed": pub_stats.get('publish_errors', 0),
+                "rate_1min": pub_stats.get('rate_1min', 0.0),
+                "rate_5min": pub_stats.get('rate_5min', 0.0),
+                "last_event_time": datetime.fromtimestamp(last_time, tz=timezone.utc).isoformat() if last_time else None,
+                "last_event_type": last_type
+            }
+        
+        # Get command subscriber stats
+        commands_stats = {}
+        if self._app_state.command_subscriber:
+            cmd_stats = self._app_state.command_subscriber.stats
+            last_time = cmd_stats.get('last_command_time')
+            last_type = cmd_stats.get('last_command_type')
+            commands_stats = {
+                "received": cmd_stats.get('commands_processed', 0),
+                "executed": cmd_stats.get('commands_succeeded', 0),
+                "failed": cmd_stats.get('commands_failed', 0),
+                "rate_1min": cmd_stats.get('rate_1min', 0.0),
+                "last_command_time": datetime.fromtimestamp(last_time, tz=timezone.utc).isoformat() if last_time else None,
+                "last_command_type": last_type
+            }
+        
+        # Get query handler stats (self)
+        queries_stats = {
+            "processed": self._queries_processed,
+            "failed": self._queries_failed,
+            "rate_1min": 0.0  # Could add StatsTracker here too if needed
+        }
+        
+        # Get connection stats
+        connections_stats = {}
+        
+        # CyTube connection
+        cytube_stats = {"connected": False, "uptime_seconds": 0, "last_event_time": None, "reconnect_count": 0}
+        if self._app_state.connector:
+            connector = self._app_state.connector
+            connected_since = connector.connected_since
+            last_event = connector.last_event_time
+            cytube_stats = {
+                "connected": connector.is_connected,
+                "uptime_seconds": (datetime.now(timezone.utc).timestamp() - connected_since) if connected_since else 0,
+                "last_event_time": datetime.fromtimestamp(last_event, tz=timezone.utc).isoformat() if last_event else None,
+                "reconnect_count": connector.reconnect_count
+            }
+        
+        # NATS connection
+        nats_stats = {"connected": False, "uptime_seconds": 0, "server": None, "reconnect_count": 0}
+        if self._app_state.nats_client:
+            nats = self._app_state.nats_client
+            connected_since = nats.connected_since
+            nats_stats = {
+                "connected": nats.is_connected,
+                "uptime_seconds": (datetime.now(timezone.utc).timestamp() - connected_since) if connected_since else 0,
+                "server": nats.connected_url,
+                "reconnect_count": nats.reconnect_count
+            }
+        
+        connections_stats = {
+            "cytube": cytube_stats,
+            "nats": nats_stats
+        }
+        
+        # Get state counts
+        state_stats = {}
+        if self._app_state.state_manager:
+            sm = self._app_state.state_manager
+            state_stats = {
+                "users_online": sm.users_count(),
+                "playlist_items": sm.playlist_count(),
+                "emotes_count": sm.emotes_count()
+            }
+        
+        # Get memory stats (if psutil available)
+        memory_stats = {}
+        if PSUTIL_AVAILABLE:
+            try:
+                process = psutil.Process()
+                mem_info = process.memory_info()
+                memory_stats = {
+                    "rss_mb": mem_info.rss / (1024 * 1024),
+                    "vms_mb": mem_info.vms / (1024 * 1024)
+                }
+            except Exception as e:
+                self._logger.warning(f"Failed to get memory stats: {e}")
+                memory_stats = {"error": str(e)}
+        else:
+            memory_stats = {"error": "psutil not available"}
+        
+        return {
+            "uptime_seconds": uptime,
+            "events": events_stats,
+            "commands": commands_stats,
+            "queries": queries_stats,
+            "connections": connections_stats,
+            "state": state_stats,
+            "memory": memory_stats
+        }
+    
+    async def _handle_system_config(self, request: dict) -> dict:
+        """Get current effective configuration.
+        
+        Returns the running configuration with sensitive fields redacted.
+        Useful for debugging and verifying configuration changes.
+        
+        Returns:
+            Dictionary containing configuration sections with passwords redacted.
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for config")
+        
+        config = self._app_state.config
+        
+        # Build sanitized config response
+        return {
+            "cytube": {
+                "domain": config.cytube.domain,
+                "channel": config.cytube.channel,
+                "user": config.cytube.user,
+                "password": "***REDACTED***"
+            },
+            "nats": {
+                "servers": config.nats.servers,
+                "user": config.nats.user,
+                "password": "***REDACTED***" if config.nats.password else None,
+                "max_reconnect_attempts": config.nats.max_reconnect_attempts,
+                "reconnect_time_wait": config.nats.reconnect_time_wait
+            },
+            "health": {
+                "enabled": config.health.enabled,
+                "host": config.health.host,
+                "port": config.health.port
+            },
+            "commands": {
+                "enabled": config.commands.enabled
+            },
+            "logging": {
+                "base_path": config.logging.base_path,
+                "admin_operations": config.logging.admin_operations,
+                "playlist_operations": config.logging.playlist_operations,
+                "chat_messages": config.logging.chat_messages,
+                "command_audit": config.logging.command_audit
+            },
+            "log_level": config.log_level
+        }
+    
+    async def _handle_system_ping(self, request: dict) -> dict:
+        """Simple alive check.
+        
+        Ultra-lightweight health check that proves NATS connectivity and
+        responsiveness. Faster than full health check.
+        
+        Returns:
+            Dictionary with pong=True, timestamp, uptime, service, and version.
+        """
+        from . import __version__
+        
+        uptime = self._app_state.get_uptime() if self._app_state else 0
+        
+        return {
+            "pong": True,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "uptime_seconds": uptime,
+            "service": "robot",
+            "version": __version__
+        }
+    
+    async def _handle_system_shutdown(self, request: dict) -> dict:
+        """Initiate graceful shutdown.
+        
+        Schedules a graceful shutdown after optional delay. The shutdown is
+        performed by setting the application's shutdown_event, which triggers
+        the normal cleanup sequence in __main__.py.
+        
+        Args:
+            request: Request dict with optional 'delay_seconds' (0-300) and 'reason'
+        
+        Returns:
+            Dictionary containing:
+                - success: Always True (if validation passes)
+                - message: Acknowledgment message
+                - delay_seconds: Actual delay applied
+                - shutdown_time: ISO8601 timestamp when shutdown will occur
+        
+        Raises:
+            ValueError: If delay is invalid or ApplicationState not available
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for shutdown")
+        
+        # Parse and validate delay
+        delay_seconds = request.get('delay_seconds', 0)
+        
+        # Convert to int/float if needed
+        try:
+            delay_seconds = float(delay_seconds)
+        except (TypeError, ValueError):
+            raise ValueError("delay_seconds must be a number")
+        
+        # Validate range
+        if delay_seconds < 0 or delay_seconds > 300:
+            raise ValueError("delay_seconds must be between 0 and 300")
+        
+        delay_seconds = int(delay_seconds)
+        reason = request.get('reason', 'Remote shutdown via system.shutdown')
+        
+        # Calculate shutdown time
+        shutdown_time = datetime.now(timezone.utc).timestamp() + delay_seconds
+        shutdown_time_iso = datetime.fromtimestamp(shutdown_time, tz=timezone.utc).isoformat()
+        
+        # Log the shutdown request
+        self._logger.warning(
+            f"Shutdown requested: delay={delay_seconds}s, reason={reason}, "
+            f"scheduled_time={shutdown_time_iso}"
+        )
+        
+        # Schedule shutdown
+        async def trigger_shutdown():
+            """Wait for delay then trigger shutdown event."""
+            if delay_seconds > 0:
+                self._logger.info(f"Waiting {delay_seconds}s before shutdown...")
+                await asyncio.sleep(delay_seconds)
+            
+            self._logger.warning(f"Triggering shutdown: {reason}")
+            self._app_state.shutdown_event.set()
+        
+        # Create task to handle shutdown (non-blocking)
+        asyncio.create_task(trigger_shutdown())
+        
+        return {
+            "success": True,
+            "message": "Shutdown initiated",
+            "delay_seconds": delay_seconds,
+            "shutdown_time": shutdown_time_iso,
+            "reason": reason
+        }
+    
+    async def _handle_system_reload(self, request: dict) -> dict:
+        """Reload configuration.
+        
+        Attempts to reload configuration from file. Only "safe" changes are
+        applied - settings that can be updated without breaking connections.
+        
+        Safe changes:
+            - log_level: Immediately updates logging level
+            - nats.user/password: Will apply on next reconnect
+            - health settings: Would require health server restart (not implemented)
+        
+        Unsafe changes (rejected):
+            - cytube.domain, cytube.channel, cytube.user: Would break connection
+        
+        Args:
+            request: Request dict with optional 'config_path'
+        
+        Returns:
+            Dictionary containing:
+                - success: Whether reload succeeded
+                - message: Human-readable result message
+                - changes: Dict of what changed (key: "old -> new")
+                - errors: List of validation errors if failed
+        
+        Raises:
+            ValueError: If ApplicationState not available
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for reload")
+        
+        from .config import load_config
+        
+        # Determine config path
+        config_path = request.get('config_path', self._app_state.config_path)
+        
+        try:
+            # Load new configuration
+            self._logger.info(f"Loading configuration from {config_path}")
+            new_config = load_config(config_path)
+            
+            # Track changes
+            changes = {}
+            errors = []
+            old_config = self._app_state.config
+            
+            # Check for unsafe changes
+            if new_config.cytube.domain != old_config.cytube.domain:
+                errors.append("Cannot change cytube.domain without restart")
+            
+            if new_config.cytube.channel != old_config.cytube.channel:
+                errors.append("Cannot change cytube.channel without restart")
+            
+            if new_config.cytube.user != old_config.cytube.user:
+                errors.append("Cannot change cytube.user without restart")
+            
+            # If there are errors, reject the reload
+            if errors:
+                self._logger.warning(f"Configuration reload rejected: {errors}")
+                return {
+                    "success": False,
+                    "message": "Configuration validation failed",
+                    "changes": {},
+                    "errors": errors
+                }
+            
+            # Apply safe changes
+            
+            # 1. Log level change
+            if new_config.log_level != old_config.log_level:
+                old_level = old_config.log_level
+                new_level = new_config.log_level
+                changes["log_level"] = f"{old_level} -> {new_level}"
+                
+                # Update logging level
+                numeric_level = getattr(logging, new_level.upper(), None)
+                if numeric_level:
+                    logging.getLogger().setLevel(numeric_level)
+                    self._logger.info(f"Updated log level to {new_level}")
+            
+            # 2. NATS credentials (will apply on next reconnect)
+            if (new_config.nats.user != old_config.nats.user or 
+                new_config.nats.password != old_config.nats.password):
+                changes["nats.credentials"] = "updated (will apply on next reconnect)"
+            
+            # 3. NATS servers
+            if new_config.nats.servers != old_config.nats.servers:
+                changes["nats.servers"] = "updated (will apply on next reconnect)"
+            
+            # Update stored config
+            self._app_state.config = new_config
+            
+            self._logger.info(f"Configuration reloaded successfully: {changes}")
+            
+            return {
+                "success": True,
+                "message": "Configuration reloaded successfully",
+                "changes": changes,
+                "errors": []
+            }
+        
+        except FileNotFoundError:
+            error_msg = f"Configuration file not found: {config_path}"
+            self._logger.error(error_msg)
+            return {
+                "success": False,
+                "message": "Configuration reload failed",
+                "changes": {},
+                "errors": [error_msg]
+            }
+        
+        except Exception as e:
+            error_msg = f"Failed to load configuration: {str(e)}"
+            self._logger.error(f"Configuration reload error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": "Configuration reload failed",
+                "changes": {},
+                "errors": [error_msg]
+            }
 
 
 __all__ = ["StateQueryHandler"]

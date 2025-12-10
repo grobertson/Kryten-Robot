@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kryten-robot"
-version = "0.5.4"
+version = "0.5.5"
 description = "CyTube to NATS bridge connector - publishes CyTube events to NATS message bus"
 authors = ["Kryten Robot Team"]
 readme = "README.md"
@@ -32,6 +32,7 @@ websockets = ">=12.0"
 aiohttp = ">=3.9.0"
 pydantic = "^2.0.0"
 pydantic-settings = "^2.0.0"
+psutil = "^5.9.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
