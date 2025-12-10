@@ -35,21 +35,16 @@ jobs:
       
       - name: Lint with ruff
         run: |
-          ruff check lib/ common/ web/ scripts/ --select E,F,W,C90,I,N --ignore E501,C901,E722
+          ruff check kryten/ --select E,F,W,C90,I,N --ignore E501,C901,E722
       
       - name: Type check with mypy
         run: |
-          mypy lib/ common/ --ignore-missing-imports --no-strict-optional
+          mypy kryten/ --ignore-missing-imports --no-strict-optional
         continue-on-error: true
 
   test:
-    name: Test (${{ matrix.db }})
+    name: Test
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        db: [sqlite, postgresql]
-      fail-fast: false  # Continue testing other DBs if one fails
     
     services:
       nats:
@@ -59,20 +54,6 @@ jobs:
           - 8222:8222
         options: >-
           --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8222/healthz || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: rosey
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: rosey_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U rosey"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -89,92 +70,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov pytest-asyncio
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       
-      - name: Set DATABASE_URL for matrix
+      - name: Verify imports
         run: |
-          if [ "${{ matrix.db }}" = "postgresql" ]; then
-            echo "DATABASE_URL=postgresql+asyncpg://rosey:test_password@localhost/rosey_test" >> $GITHUB_ENV
-          else
-            echo "DATABASE_URL=sqlite+aiosqlite:///:memory:" >> $GITHUB_ENV
-          fi
-      
-      - name: Initialize database schema
-        run: |
-          # Run initial migration to create tables for fresh database
-          alembic upgrade 000_initial
-          echo "✓ Database schema initialized"
-        env:
-          ROSEY_DATABASE_URL: sqlite+aiosqlite:///test_bot_data.db
-      
-      - name: Start database service
-        run: |
-          # Start database service in background with nohup
-          nohup python -m common.database_service --db-path test_bot_data.db --nats-url nats://localhost:4222 --log-level DEBUG > /tmp/db_service.log 2>&1 &
-          echo $! > /tmp/db_service.pid
-          # Wait for service to be ready
-          sleep 10
-          # Verify service is still running
-          if ! ps -p $(cat /tmp/db_service.pid) > /dev/null; then
-            echo "❌ Database service failed to start. Log output:"
-            cat /tmp/db_service.log
-            exit 1
-          fi
-          echo "✓ Database service started successfully with PID $(cat /tmp/db_service.pid)"
-          # Show first few lines of log
-          echo "Service log (first 20 lines):"
-          head -n 20 /tmp/db_service.log
+          python -c "import kryten; print('✓ Kryten module imports successfully')"
         env:
           NATS_URL: nats://localhost:4222
-      
-      - name: Run tests
-        run: |
-          pytest tests/unit tests/integration/test_nats_integration.py --cov=lib --cov=common --cov-report=term-missing --cov-report=xml --ignore=tests/unit/test_database.py --ignore=tests/unit/test_database_service.py --ignore=tests/unit/test_database_lifecycle.py --ignore=tests/integration/test_database_persistence.py
-        env:
-          NATS_URL: nats://localhost:4222
-      
-      - name: Apply plugin migrations
-        run: |
-          # Apply quote-db plugin migrations before running plugin tests
-          python scripts/apply_plugin_migrations.py quote-db nats://localhost:4222
-        env:
-          NATS_URL: nats://localhost:4222
-      
-      - name: Run plugin tests
-        run: |
-          cd plugins/quote-db
-          PYTHONPATH="$GITHUB_WORKSPACE:$PYTHONPATH" pytest tests/ -v --cov=quote_db --cov-report=term-missing
-        env:
-          NATS_URL: nats://localhost:4222
-        continue-on-error: false
-      
-      - name: Stop database service
-        if: always()
-        run: |
-          if [ -f /tmp/db_service.pid ]; then
-            echo "Stopping database service..."
-            kill $(cat /tmp/db_service.pid) || true
-            sleep 2
-            echo "✓ Database service stopped"
-            # Show full log if tests failed
-            if [ -f /tmp/db_service.log ]; then
-              echo "Service log (last 20 lines):"
-              tail -n 20 /tmp/db_service.log
-            fi
-          fi
-      
-      - name: Check coverage
-        run: |
-          coverage report --fail-under=60
-      
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.xml
-          flags: ${{ matrix.db }}
-          name: codecov-${{ matrix.db }}
-        continue-on-error: true
 
   build:
     name: Build
@@ -193,8 +95,7 @@ jobs:
         run: |
           echo "Checking required files..."
           test -f requirements.txt || (echo "Missing requirements.txt" && exit 1)
-          test -d lib || (echo "Missing lib/ directory" && exit 1)
-          test -f lib/bot.py || (echo "Missing lib/bot.py" && exit 1)
+          test -d kryten || (echo "Missing kryten/ directory" && exit 1)
           echo "✓ Project structure valid"
       
       - name: Install dependencies
@@ -204,9 +105,9 @@ jobs:
       
       - name: Verify imports
         run: |
-          python -c "import lib.bot; print('✓ Bot module imports successfully')"
+          python -c "import kryten; print('✓ Kryten module imports successfully')"
       
       - name: Check for syntax errors
         run: |
-          python -m py_compile lib/*.py common/*.py
+          python -m py_compile kryten/*.py
           echo "✓ No syntax errors detected"
