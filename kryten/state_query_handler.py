@@ -335,7 +335,8 @@ class StateQueryHandler:
         events_stats = {}
         if self._app_state.event_publisher:
             pub_stats = self._app_state.event_publisher.stats
-            last_time, last_type = pub_stats.get('last_event', (None, None))
+            last_time = pub_stats.get('last_event_time')
+            last_type = pub_stats.get('last_event_type')
             events_stats = {
                 "published": pub_stats.get('events_published', 0),
                 "failed": pub_stats.get('publish_errors', 0),
@@ -349,7 +350,8 @@ class StateQueryHandler:
         commands_stats = {}
         if self._app_state.command_subscriber:
             cmd_stats = self._app_state.command_subscriber.stats
-            last_time, last_type = cmd_stats.get('last_command', (None, None))
+            last_time = cmd_stats.get('last_command_time')
+            last_type = cmd_stats.get('last_command_type')
             commands_stats = {
                 "received": cmd_stats.get('commands_processed', 0),
                 "executed": cmd_stats.get('commands_succeeded', 0),
