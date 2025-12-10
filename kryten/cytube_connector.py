@@ -56,6 +56,11 @@ class CytubeConnector:
         self._connected = False
         self._user_rank: int = 0  # Track logged-in user's rank (0=guest, 1=registered, 2+=moderator/admin)
         
+        # Connection tracking
+        self._connected_since: Optional[float] = None
+        self._reconnect_count: int = 0
+        self._last_event_time: Optional[float] = None
+        
         # Event streaming support
         self._event_queue: asyncio.Queue[Tuple[str, Dict[str, Any]]] = asyncio.Queue(maxsize=1000)
         self._event_callbacks: Dict[str, List[Callable[[str, dict], None]]] = {}
@@ -80,6 +85,33 @@ class CytubeConnector:
             User rank: 0=guest, 1=registered, 2=moderator, 3+=admin.
         """
         return self._user_rank
+    
+    @property
+    def connected_since(self) -> Optional[float]:
+        """Get timestamp when connection was established.
+        
+        Returns:
+            Unix timestamp of connection time, or None if not connected.
+        """
+        return self._connected_since
+    
+    @property
+    def reconnect_count(self) -> int:
+        """Get number of reconnection attempts.
+        
+        Returns:
+            Count of reconnection attempts since instance creation.
+        """
+        return self._reconnect_count
+    
+    @property
+    def last_event_time(self) -> Optional[float]:
+        """Get timestamp of last received event.
+        
+        Returns:
+            Unix timestamp of last event, or None if no events received.
+        """
+        return self._last_event_time
 
     @property
     def stats(self) -> Dict[str, int]:
@@ -146,6 +178,13 @@ class CytubeConnector:
 
             self._connected = True
             
+            # Track connection timing
+            import time
+            if self._connected_since is not None:
+                # This is a reconnection
+                self._reconnect_count += 1
+            self._connected_since = time.time()
+            
             # Start event consumer task
             self._consumer_task = asyncio.create_task(self._consume_socket_events())
             
@@ -210,6 +249,7 @@ class CytubeConnector:
         Internal method for closing socket and resetting connection state.
         """
         self._connected = False
+        self._connected_since = None
 
         # Cancel consumer task if running
         if self._consumer_task and not self._consumer_task.done():
@@ -559,6 +599,10 @@ class CytubeConnector:
                 try:
                     event_name, payload = await self._socket.recv()
                     self._messages_received += 1
+                    
+                    # Track last event time
+                    import time
+                    self._last_event_time = time.time()
 
                     # Try to queue event, drop oldest if full
                     try:
