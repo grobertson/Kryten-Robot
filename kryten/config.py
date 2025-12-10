@@ -8,8 +8,6 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Union
-
 
 # Valid log levels (mirrors Python logging module)
 VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -39,9 +37,9 @@ class CytubeConfig:
 
     domain: str
     channel: str
-    channel_password: Optional[str] = None
-    user: Optional[str] = None
-    password: Optional[str] = None
+    channel_password: str | None = None
+    user: str | None = None
+    password: str | None = None
 
 
 @dataclass
@@ -63,9 +61,9 @@ class NatsConfig:
         10
     """
 
-    servers: List[str]
-    user: Optional[str] = None
-    password: Optional[str] = None
+    servers: list[str]
+    user: str | None = None
+    password: str | None = None
     connect_timeout: int = 10
     reconnect_time_wait: int = 2
     max_reconnect_attempts: int = 10
@@ -135,20 +133,20 @@ class LoggingConfig:
 @dataclass
 class StateCountingConfig:
     """Configuration for state counting and filtering.
-    
+
     Attributes:
         users_exclude_afk: Exclude AFK users from count. Default: False.
         users_min_rank: Minimum rank to include in count (0=all). Default: 0.
         playlist_exclude_temp: Exclude temporary items from count. Default: False.
         playlist_max_duration: Maximum duration (seconds) to include (0=no limit). Default: 0.
         emotes_only_enabled: Only count enabled emotes. Default: False.
-        
+
     Examples:
         >>> cfg = StateCountingConfig(users_exclude_afk=True, users_min_rank=1)
         >>> print(cfg.users_exclude_afk)
         True
     """
-    
+
     users_exclude_afk: bool = False
     users_min_rank: int = 0
     playlist_exclude_temp: bool = False
@@ -236,9 +234,9 @@ def _load_cytube_config(data: dict) -> CytubeConfig:
 
     # Check required fields
     required_fields = ["domain", "channel"]
-    for field in required_fields:
-        if field not in cytube_data:
-            raise ValueError(f"Missing required field: cytube.{field}")
+    for required_field in required_fields:
+        if required_field not in cytube_data:
+            raise ValueError(f"Missing required field: cytube.{required_field}")
 
     # Extract and normalize required fields
     domain = _normalize_string(str(cytube_data["domain"]))
@@ -391,7 +389,7 @@ def _load_health_config(data: dict) -> HealthConfig:
     return HealthConfig(enabled=enabled, host=host, port=port)
 
 
-def load_config(path: Union[Path, str]) -> KrytenConfig:
+def load_config(path: Path | str) -> KrytenConfig:
     """Load and validate configuration from JSON file.
 
     Reads JSON configuration file, validates structure and types, applies
@@ -468,7 +466,7 @@ def load_config(path: Union[Path, str]) -> KrytenConfig:
                 chat_messages=logging_data.get("chat_messages", "chat-messages.log"),
                 command_audit=logging_data.get("command_audit", "command-audit.log"),
             )
-    
+
     # Load state counting configuration
     state_counting_config = StateCountingConfig()
     if "state_counting" in data:

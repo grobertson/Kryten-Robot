@@ -40,10 +40,9 @@ import logging.config
 import logging.handlers
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Dict, Optional
+from datetime import UTC, datetime
 
-from .correlation import CorrelationFilter, get_correlation_context
+from .correlation import CorrelationFilter
 
 
 @dataclass
@@ -72,10 +71,10 @@ class LoggingConfig:
     level: str = "INFO"
     format: str = "json"  # or "text"
     output: str = "console"  # or "file"
-    file_path: Optional[str] = None
+    file_path: str | None = None
     max_bytes: int = 10_485_760  # 10MB
     backup_count: int = 5
-    component_levels: Dict[str, str] = field(default_factory=dict)
+    component_levels: dict[str, str] = field(default_factory=dict)
 
 
 class SensitiveDataFilter(logging.Filter):
@@ -141,7 +140,7 @@ class JSONFormatter(logging.Formatter):
         component = record.name.split(".")[-1] if "." in record.name else record.name
 
         log_data = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%d %H:%M:%S"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -186,7 +185,7 @@ class TextFormatter(logging.Formatter):
         component = record.name.split(".")[-1] if "." in record.name else record.name
 
         # Format timestamp
-        timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
 
         # Get correlation ID
         correlation_id = getattr(record, "correlation_id", "N/A")

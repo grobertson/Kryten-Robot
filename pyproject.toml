@@ -89,7 +89,7 @@ ignore = [
 ]
 
 [tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]  # unused imports in __init__.py
+"__init__.py" = ["F401", "E402"]  # unused imports and module level imports for version loading
 "tests/*" = ["F401", "F811"]  # allow unused imports and redefinitions in tests
 
 [tool.mypy]

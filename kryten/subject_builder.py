@@ -61,13 +61,13 @@ MAX_TOKEN_LENGTH = 100
 
 def normalize_token(token: str) -> str:
     """Normalize token for consistent NATS subject matching.
-    
+
     Aggressively normalizes domains and channels to ensure consistent matching:
     - Converts to lowercase
     - Removes ALL dots (cy.tube -> cytube, cytu.be -> cytube)
     - Replaces spaces with hyphens
     - Removes special characters
-    
+
     This ensures that variations like "cy.tube", "Cy.tube", "cytu.be" all
     normalize to the same subject token, making NATS routing reliable.
 
@@ -118,7 +118,7 @@ def normalize_token(token: str) -> str:
 
 def sanitize_token(token: str) -> str:
     """Legacy alias for normalize_token. Use normalize_token instead.
-    
+
     Deprecated: This function exists for backward compatibility only.
     Use normalize_token() for new code.
     """
@@ -130,7 +130,7 @@ def build_subject(domain: str, channel: str, event_name: str) -> str:
 
     Constructs hierarchical subject following the format:
     kryten.events.cytube.{channel}.{event_name}
-    
+
     All components are aggressively normalized (lowercase, dots removed).
 
     Args:
@@ -153,7 +153,7 @@ def build_subject(domain: str, channel: str, event_name: str) -> str:
         'kryten.events.cytube.test-channel.userjoin'
     """
     # Normalize all components (domain dots removed, everything lowercase)
-    domain_clean = normalize_token(domain)
+    normalize_token(domain)
     channel_clean = normalize_token(channel)
     event_clean = normalize_token(event_name)
 
@@ -199,7 +199,7 @@ def build_command_subject(domain: str, channel: str, action: str) -> str:
 
     Constructs hierarchical subject following the format:
     kryten.commands.cytube.{channel}.{action}
-    
+
     All components are aggressively normalized (lowercase, dots removed).
 
     Args:
@@ -222,7 +222,7 @@ def build_command_subject(domain: str, channel: str, action: str) -> str:
         'kryten.commands.cytube.test-channel.queue'
     """
     # Normalize all components (domain dots removed, everything lowercase)
-    domain_clean = normalize_token(domain)
+    normalize_token(domain)
     channel_clean = normalize_token(channel)
     action_clean = normalize_token(action)
 

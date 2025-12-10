@@ -10,7 +10,7 @@ from typing import Final
 
 def _read_version() -> str:
     """Read version from VERSION file at repository root.
-    
+
     Returns:
         Semantic version string, or "0.1.0-dev" if file unavailable.
     """
@@ -20,7 +20,7 @@ def _read_version() -> str:
         if not version_file.exists():
             # Fallback to repo root (for development)
             version_file = Path(__file__).parent.parent.parent / "VERSION"
-        
+
         version_text = version_file.read_text(encoding="utf-8")
         return version_text.strip()
     except (FileNotFoundError, OSError, UnicodeDecodeError):
@@ -33,10 +33,10 @@ __version__: Final[str] = _read_version()
 
 def get_version() -> str:
     """Return the semantic version string.
-    
+
     Returns:
         Version string in MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-suffix format.
-    
+
     Example:
         >>> from bot import kryten
         >>> kryten.get_version()
@@ -86,7 +86,6 @@ from .subject_builder import (
     parse_subject,
     sanitize_token,
 )
-
 
 __all__ = [
     "__version__",

@@ -10,9 +10,9 @@ import asyncio
 import json
 import logging
 import re
-import socket
+from collections.abc import Callable
 from time import time
-from typing import TYPE_CHECKING, Any, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from websockets.client import WebSocketClientProtocol
@@ -22,12 +22,13 @@ else:
 import websockets
 from websockets.exceptions import (
     ConnectionClosed as WebSocketConnectionClosed,
+)
+from websockets.exceptions import (
     InvalidHandshake,
     InvalidState,
     PayloadTooBig,
     WebSocketProtocolError,
 )
-
 
 # ============================================================================
 # Exception Classes
@@ -81,7 +82,7 @@ async def default_get(url: str) -> str:
             return await response.text()
 
 
-def _current_task(loop: asyncio.AbstractEventLoop) -> Optional[asyncio.Task]:
+def _current_task(loop: asyncio.AbstractEventLoop) -> asyncio.Task | None:
     """Get the current task, compatible with Python 3.6+.
 
     Parameters
@@ -163,7 +164,7 @@ class SocketIOResponse:
 
     __repr__ = __str__
 
-    def set(self, value: Tuple[str, Any]) -> None:
+    def set(self, value: tuple[str, Any]) -> None:
         """Set the future result.
 
         Parameters
@@ -174,7 +175,7 @@ class SocketIOResponse:
         if not self.future.done():
             self.future.set_result(value)
 
-    def cancel(self, ex: Optional[Exception] = None) -> None:
+    def cancel(self, ex: Exception | None = None) -> None:
         """Cancel the future or set exception.
 
         Parameters
@@ -190,7 +191,7 @@ class SocketIOResponse:
 
     @staticmethod
     def match_event(
-        ev: Optional[str] = None, data: Optional[dict] = None
+        ev: str | None = None, data: dict | None = None
     ) -> Callable[[str, Any], bool]:
         """Create a matcher for specific event name and/or data.
 
@@ -307,7 +308,7 @@ class SocketIO:
         """
         self.websocket = websocket
         self.loop = loop
-        self._error: Optional[Exception] = None
+        self._error: Exception | None = None
         self.closing = asyncio.Event()
         self.closed = asyncio.Event()
         self.ping_response = asyncio.Event()
@@ -322,15 +323,15 @@ class SocketIO:
         # Start background tasks
         self.ping_task = self.loop.create_task(self._ping())
         self.recv_task = self.loop.create_task(self._recv())
-        self.close_task: Optional[asyncio.Task] = None
+        self.close_task: asyncio.Task | None = None
 
     @property
-    def error(self) -> Optional[Exception]:
+    def error(self) -> Exception | None:
         """Get current error state."""
         return self._error
 
     @error.setter
-    def error(self, ex: Optional[Exception]) -> None:
+    def error(self, ex: Exception | None) -> None:
         """Set error state and initiate close if not already set.
 
         Parameters
@@ -432,7 +433,7 @@ class SocketIO:
             self.closed.set()
             self.logger.info("close complete")
 
-    async def recv(self) -> Tuple[str, Any]:
+    async def recv(self) -> tuple[str, Any]:
         """Receive next event from queue.
 
         Returns
@@ -461,9 +462,9 @@ class SocketIO:
         self,
         event: str,
         data: Any,
-        match_response: Optional[Callable[[str, Any], bool]] = None,
-        response_timeout: Optional[float] = None,
-    ) -> Optional[Tuple[str, Any]]:
+        match_response: Callable[[str, Any], bool] | None = None,
+        response_timeout: float | None = None,
+    ) -> tuple[str, Any] | None:
         """Send an event, optionally waiting for response.
 
         Parameters
@@ -509,7 +510,7 @@ class SocketIO:
         self.logger.debug("emit: %s", frame)
 
         release = False
-        response: Optional[SocketIOResponse] = None
+        response: SocketIOResponse | None = None
 
         try:
             # If waiting for response, register matcher
@@ -545,7 +546,7 @@ class SocketIO:
                 self.logger.info("response cancelled for %s", event)
                 raise
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.logger.info("response timeout for %s", event)
                 response.cancel()
                 return None
@@ -601,17 +602,11 @@ class SocketIO:
         except asyncio.CancelledError:
             self.logger.debug("ping task cancelled")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error("ping timeout")
             self.error = PingTimeout()
 
-        except (
-            socket.error,
-            WebSocketConnectionClosed,
-            InvalidState,
-            PayloadTooBig,
-            WebSocketProtocolError,
-        ) as ex:
+        except (OSError, WebSocketConnectionClosed, InvalidState, PayloadTooBig, WebSocketProtocolError) as ex:
             self.logger.error("ping error: %r", ex)
             self.error = ConnectionClosed(str(ex))
 
@@ -652,13 +647,7 @@ class SocketIO:
             if self.error is None:
                 self.error = ConnectionClosed()
 
-        except (
-            socket.error,
-            WebSocketConnectionClosed,
-            InvalidState,
-            PayloadTooBig,
-            WebSocketProtocolError,
-        ) as ex:
+        except (OSError, WebSocketConnectionClosed, InvalidState, PayloadTooBig, WebSocketProtocolError) as ex:
             self.logger.error("recv error: %r", ex)
             self.error = ConnectionClosed(str(ex))
 
@@ -843,7 +832,7 @@ class SocketIO:
         retry: int = -1,
         retry_delay: float = 1.0,
         qsize: int = 0,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        loop: asyncio.AbstractEventLoop | None = None,
         get: Callable = default_get,
         connect: Callable = websockets.connect,
     ) -> "SocketIO":

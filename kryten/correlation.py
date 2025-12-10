@@ -39,10 +39,9 @@ Note:
 import logging
 import uuid
 from contextvars import ContextVar
-from typing import Optional
 
 # Context-local storage for correlation ID (thread-safe, async-aware)
-_correlation_context: ContextVar[Optional[str]] = ContextVar(
+_correlation_context: ContextVar[str | None] = ContextVar(
     "correlation_id", default=None
 )
 
@@ -83,7 +82,7 @@ def set_correlation_context(correlation_id: str) -> None:
     _correlation_context.set(correlation_id)
 
 
-def get_correlation_context() -> Optional[str]:
+def get_correlation_context() -> str | None:
     """Get correlation ID from the current async context.
 
     Returns None if no correlation ID has been set in the current context.
@@ -141,7 +140,7 @@ class CorrelationContext:
             ...     # Process with existing correlation
     """
 
-    def __init__(self, correlation_id: Optional[str] = None):
+    def __init__(self, correlation_id: str | None = None):
         """Initialize correlation context.
 
         Args:

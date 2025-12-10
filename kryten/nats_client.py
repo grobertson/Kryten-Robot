@@ -6,9 +6,9 @@ lifecycle management, automatic reconnection, and error handling.
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
-import nats
 from nats.aio.client import Client as NATS
 from nats.aio.subscription import Subscription
 
@@ -43,11 +43,11 @@ class NatsClient:
         """
         self.config = config
         self.logger = logger
-        self._nc: Optional[NATS] = None
+        self._nc: NATS | None = None
         self._connected = False
 
         # Connection tracking
-        self._connected_since: Optional[float] = None
+        self._connected_since: float | None = None
         self._reconnect_count: int = 0
 
         # Statistics tracking
@@ -63,29 +63,29 @@ class NatsClient:
             True if connected and client is active, False otherwise.
         """
         return self._connected and self._nc is not None and self._nc.is_connected
-    
+
     @property
-    def connected_since(self) -> Optional[float]:
+    def connected_since(self) -> float | None:
         """Get timestamp when connection was established.
-        
+
         Returns:
             Unix timestamp of connection time, or None if not connected.
         """
         return self._connected_since
-    
+
     @property
     def reconnect_count(self) -> int:
         """Get number of reconnection attempts.
-        
+
         Returns:
             Count of reconnections since instance creation.
         """
         return self._reconnect_count
-    
+
     @property
-    def connected_url(self) -> Optional[str]:
+    def connected_url(self) -> str | None:
         """Get the currently connected NATS server URL.
-        
+
         Returns:
             Server URL if connected, None otherwise.
         """
@@ -94,7 +94,7 @@ class NatsClient:
         return None
 
     @property
-    def stats(self) -> Dict[str, int]:
+    def stats(self) -> dict[str, int]:
         """Get publishing statistics.
 
         Returns:
@@ -161,11 +161,11 @@ class NatsClient:
             await self._nc.connect(**options)
 
             self._connected = True
-            
+
             # Track connection timing
             import time
             self._connected_since = time.time()
-            
+
             self.logger.info(
                 "Connected to NATS",
                 extra={
@@ -418,11 +418,11 @@ class NatsClient:
     async def _reconnected_callback(self) -> None:
         """Callback when reconnected to NATS."""
         self._reconnect_count += 1
-        
+
         # Update connected_since for the new connection
         import time
         self._connected_since = time.time()
-        
+
         self.logger.info(
             f"Reconnected to NATS server (reconnect #{self._reconnect_count})"
         )

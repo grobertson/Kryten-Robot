@@ -7,7 +7,8 @@ authenticating, and joining CyTube channels with proper lifecycle management.
 import asyncio
 import logging
 import re
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Tuple
+from collections.abc import AsyncIterator, Callable
+from typing import Any
 
 import aiohttp
 
@@ -39,7 +40,7 @@ class CytubeConnector:
         self,
         config: CytubeConfig,
         logger: logging.Logger,
-        socket_factory: Optional[Callable] = None,
+        socket_factory: Callable | None = None,
     ):
         """Initialize CyTube connector.
 
@@ -52,21 +53,21 @@ class CytubeConnector:
         self.config = config
         self.logger = logger
         self._socket_factory = socket_factory or SocketIO.connect
-        self._socket: Optional[SocketIO] = None
+        self._socket: SocketIO | None = None
         self._connected = False
         self._user_rank: int = 0  # Track logged-in user's rank (0=guest, 1=registered, 2+=moderator/admin)
-        
+
         # Connection tracking
-        self._connected_since: Optional[float] = None
+        self._connected_since: float | None = None
         self._reconnect_count: int = 0
-        self._last_event_time: Optional[float] = None
-        
+        self._last_event_time: float | None = None
+
         # Event streaming support
-        self._event_queue: asyncio.Queue[Tuple[str, Dict[str, Any]]] = asyncio.Queue(maxsize=1000)
-        self._event_callbacks: Dict[str, List[Callable[[str, dict], None]]] = {}
+        self._event_queue: asyncio.Queue[tuple[str, dict[str, Any]]] = asyncio.Queue(maxsize=1000)
+        self._event_callbacks: dict[str, list[Callable[[str, dict], None]]] = {}
         self._messages_received = 0
         self._events_processed = 0
-        self._consumer_task: Optional[asyncio.Task] = None
+        self._consumer_task: asyncio.Task | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -85,36 +86,36 @@ class CytubeConnector:
             User rank: 0=guest, 1=registered, 2=moderator, 3+=admin.
         """
         return self._user_rank
-    
+
     @property
-    def connected_since(self) -> Optional[float]:
+    def connected_since(self) -> float | None:
         """Get timestamp when connection was established.
-        
+
         Returns:
             Unix timestamp of connection time, or None if not connected.
         """
         return self._connected_since
-    
+
     @property
     def reconnect_count(self) -> int:
         """Get number of reconnection attempts.
-        
+
         Returns:
             Count of reconnection attempts since instance creation.
         """
         return self._reconnect_count
-    
+
     @property
-    def last_event_time(self) -> Optional[float]:
+    def last_event_time(self) -> float | None:
         """Get timestamp of last received event.
-        
+
         Returns:
             Unix timestamp of last event, or None if no events received.
         """
         return self._last_event_time
 
     @property
-    def stats(self) -> Dict[str, int]:
+    def stats(self) -> dict[str, int]:
         """Get event streaming statistics.
 
         Returns:
@@ -177,22 +178,22 @@ class CytubeConnector:
             await self._authenticate_user()
 
             self._connected = True
-            
+
             # Track connection timing
             import time
             if self._connected_since is not None:
                 # This is a reconnection
                 self._reconnect_count += 1
             self._connected_since = time.time()
-            
+
             # Start event consumer task
             self._consumer_task = asyncio.create_task(self._consume_socket_events())
-            
+
             # Request initial state from CyTube
             # This ensures KV stores are populated with complete state
             # even if bot starts after channel is already active
             await self._request_initial_state()
-            
+
             self.logger.info(
                 "Connected to CyTube",
                 extra={
@@ -354,13 +355,13 @@ class CytubeConnector:
                     f"Invalid or missing password for channel: {self.config.channel}"
                 )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # No immediate rejection means join was accepted
             pass
 
         self.logger.debug(f"Joined channel: {self.config.channel}")
 
-    async def _wait_for_channel_response(self) -> Optional[tuple[str, Any]]:
+    async def _wait_for_channel_response(self) -> tuple[str, Any] | None:
         """Wait for channel-related response from server.
 
         Returns:
@@ -488,7 +489,7 @@ class CytubeConnector:
 
         raise AuthenticationError("Guest login failed after maximum retries")
 
-    def _parse_rate_limit_delay(self, error_message: str) -> Optional[int]:
+    def _parse_rate_limit_delay(self, error_message: str) -> int | None:
         """Parse rate limit delay from error message.
 
         Args:
@@ -512,25 +513,25 @@ class CytubeConnector:
 
     async def _request_initial_state(self) -> None:
         """Request initial channel state from CyTube.
-        
+
         Requests complete channel state after connecting:
         - Emits 'requestPlaylist' to get full playlist
         - Emits 'playerReady' to get currently playing media
-        
-        Note: CyTube automatically sends 'userlist' and 'emoteList' when 
+
+        Note: CyTube automatically sends 'userlist' and 'emoteList' when
         joining a channel, so we don't need to explicitly request those.
-        
+
         This ensures KV stores are populated with complete state even if
         the bot starts after the channel is already active, preventing
         gaps in state that would occur if we only relied on delta events.
-        
+
         Raises:
             SocketIOError: If requests fail.
         """
         if not self._socket:
             self.logger.warning("Cannot request initial state: socket not connected")
             return
-        
+
         self.logger.debug("Requesting initial state from CyTube")
         try:
             # Only request playlist if user has moderator+ permissions (rank >= 2)
@@ -540,18 +541,18 @@ class CytubeConnector:
                 self.logger.debug(f"Playlist request sent (rank: {self._user_rank})")
             else:
                 self.logger.debug(f"Skipping playlist request - insufficient permissions (rank: {self._user_rank}, need >= 2)")
-            
+
             # Request current media state (available to all users)
             # CyTube will respond with 'changeMedia' event
             await self._socket.emit("playerReady", {})
             self.logger.debug("Player ready signal sent")
-            
+
             # Give CyTube a moment to respond with state
             # The responses will be handled by the event consumer task
             await asyncio.sleep(0.5)
-            
+
             self.logger.info("Initial state requested from CyTube")
-        
+
         except Exception as e:
             # Don't fail connection if state request fails
             # We'll still get delta updates going forward
@@ -599,7 +600,7 @@ class CytubeConnector:
                 try:
                     event_name, payload = await self._socket.recv()
                     self._messages_received += 1
-                    
+
                     # Track last event time
                     import time
                     self._last_event_time = time.time()
@@ -649,7 +650,7 @@ class CytubeConnector:
             payload: Event payload data.
         """
         callbacks = self._event_callbacks.get(event_name, [])
-        
+
         for callback in callbacks:
             try:
                 callback(event_name, payload)
@@ -677,7 +678,7 @@ class CytubeConnector:
         """
         if event_name not in self._event_callbacks:
             self._event_callbacks[event_name] = []
-        
+
         if callback not in self._event_callbacks[event_name]:
             self._event_callbacks[event_name].append(callback)
             self.logger.debug(f"Registered callback for event: {event_name}")
@@ -696,14 +697,14 @@ class CytubeConnector:
             try:
                 self._event_callbacks[event_name].remove(callback)
                 self.logger.debug(f"Unregistered callback for event: {event_name}")
-                
+
                 # Clean up empty callback lists
                 if not self._event_callbacks[event_name]:
                     del self._event_callbacks[event_name]
             except ValueError:
                 self.logger.warning(f"Callback not found for event: {event_name}")
 
-    async def recv_events(self) -> AsyncIterator[Tuple[str, Dict[str, Any]]]:
+    async def recv_events(self) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         """Async generator yielding raw CyTube events.
 
         Yields events in FIFO order as (event_name, payload) tuples.
@@ -734,7 +735,7 @@ class CytubeConnector:
                     self._events_processed += 1
                     yield event_name, payload
 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # No event received, check if still connected
                     if not self._connected:
                         break

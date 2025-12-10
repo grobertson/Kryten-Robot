@@ -8,7 +8,7 @@ appropriate NATS subjects.
 import asyncio
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .cytube_connector import CytubeConnector
 from .nats_client import NatsClient
@@ -78,7 +78,7 @@ class EventPublisher:
         self._events_published = 0
         self._publish_errors = 0
         self._total_publish_time = 0.0
-        
+
         # Rate tracking
         self._stats_tracker = StatsTracker()
 
@@ -100,7 +100,7 @@ class EventPublisher:
         return self._running
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Get publishing statistics.
 
         Returns:
@@ -120,7 +120,7 @@ class EventPublisher:
         success_rate = 0.0
         if self._events_received > 0:
             success_rate = self._events_published / self._events_received
-        
+
         # Get rate information from StatsTracker
         last_time, last_type = self._stats_tracker.get_last()
 
@@ -285,7 +285,7 @@ class EventPublisher:
         Logs errors and updates statistics.
         """
         attempt = 0
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         while attempt <= self.retry_attempts:
             try:
