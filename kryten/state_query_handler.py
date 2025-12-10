@@ -528,7 +528,15 @@ class StateQueryHandler:
         
         # Parse and validate delay
         delay_seconds = request.get('delay_seconds', 0)
-        if not isinstance(delay_seconds, (int, float)) or delay_seconds < 0 or delay_seconds > 300:
+        
+        # Convert to int/float if needed
+        try:
+            delay_seconds = float(delay_seconds)
+        except (TypeError, ValueError):
+            raise ValueError("delay_seconds must be a number")
+        
+        # Validate range
+        if delay_seconds < 0 or delay_seconds > 300:
             raise ValueError("delay_seconds must be between 0 and 300")
         
         delay_seconds = int(delay_seconds)
