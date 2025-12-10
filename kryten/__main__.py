@@ -5,9 +5,14 @@ as a standalone service. It coordinates component initialization, handles
 signals for graceful shutdown, and manages the application lifecycle.
 
 Usage:
-    python -m bot.kryten config.json
-    python -m bot.kryten --version
-    python -m bot.kryten --help
+    python -m kryten
+    python -m kryten --config /path/to/config.json
+    python -m kryten --version
+    python -m kryten --help
+
+Default config locations (searched in order):
+    - /etc/kryten/kryten-robot/config.json
+    - ./config.json
 
 Exit Codes:
     0: Clean shutdown
@@ -685,14 +690,19 @@ def cli() -> None:
     """
     # PAT-001: Use argparse for CLI
     parser = argparse.ArgumentParser(
-        prog="python -m bot.kryten",
+        prog="python -m kryten",
         description="Kryten CyTube Connector - Bridges CyTube chat to NATS event bus",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m bot.kryten config.json
-  python -m bot.kryten --version
-  python -m bot.kryten --help
+  python -m kryten                             # Use default config locations
+  python -m kryten --config /path/to/config.json
+  python -m kryten --version
+  python -m kryten --help
+
+Default config locations (searched in order):
+  - /etc/kryten/kryten-robot/config.json
+  - ./config.json
 
 Signals:
   SIGINT (Ctrl+C): Graceful shutdown
@@ -711,17 +721,41 @@ Exit Codes:
         version=f"Kryten v{__version__}"
     )
     
-    # REQ-002: Configuration file argument
+    # REQ-002: Configuration file argument (optional with default)
     parser.add_argument(
-        "config",
+        "--config",
+        "-c",
         type=str,
-        help="Path to JSON configuration file"
+        help="Path to JSON configuration file (default: /etc/kryten/kryten-robot/config.json or ./config.json)"
     )
     
     args = parser.parse_args()
     
-    # GUD-002: Validate configuration file exists
-    config_path = Path(args.config)
+    # GUD-002: Determine configuration file path
+    if args.config:
+        config_path = Path(args.config)
+    else:
+        # Try default locations in order
+        default_paths = [
+            Path("/etc/kryten/kryten-robot/config.json"),
+            Path("config.json")
+        ]
+        
+        config_path = None
+        for path in default_paths:
+            if path.exists() and path.is_file():
+                config_path = path
+                break
+        
+        if not config_path:
+            print("ERROR: No configuration file found.", file=sys.stderr)
+            print(f"  Searched:", file=sys.stderr)
+            for path in default_paths:
+                print(f"    - {path}", file=sys.stderr)
+            print(f"  Use --config to specify a custom path.", file=sys.stderr)
+            sys.exit(1)
+    
+    # Validate configuration file exists
     if not config_path.exists():
         print(f"ERROR: Configuration file not found: {config_path}", file=sys.stderr)
         sys.exit(1)
