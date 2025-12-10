@@ -221,7 +221,8 @@ if (-not (Test-CriticalPackagesInstalled $VenvPython)) {
     }
 }
 
-# Step 5: Set PYTHONPATH to ensure local modules are found
+# Step 5: Clear PYTHONPATH to avoid conflicts, then set for local modules
+$env:PYTHONPATH = ""
 $env:PYTHONPATH = $ScriptDir
 
 # Step 6: Run the application

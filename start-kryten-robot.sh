@@ -183,7 +183,8 @@ if ! check_critical_packages "$VENV_PYTHON"; then
     fi
 fi
 
-# Step 5: Set PYTHONPATH to ensure local modules are found
+# Step 5: Clear PYTHONPATH to avoid conflicts, then set for local modules
+export PYTHONPATH=""
 export PYTHONPATH="$SCRIPT_DIR"
 
 # Step 6: Run the application
