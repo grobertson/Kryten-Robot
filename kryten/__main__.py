@@ -39,6 +39,7 @@ from . import (
     load_config,
     setup_logging,
 )
+from .application_state import ApplicationState
 from .audit_logger import create_audit_logger
 from .errors import ConnectionError as KrytenConnectionError
 
@@ -177,6 +178,10 @@ async def main(config_path: str) -> int:
         logger.info(f"  - Chat messages: {config.logging.chat_messages}")
         logger.info(f"  - Command audit: {config.logging.command_audit}")
         
+        # Create ApplicationState for system management
+        app_state = ApplicationState(config_path=config_path, config=config)
+        logger.info("Application state initialized")
+        
         # REQ-006: Register signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -188,6 +193,7 @@ async def main(config_path: str) -> int:
         
         try:
             await nats_client.connect()
+            app_state.nats_client = nats_client
             logger.info("Successfully connected to NATS")
         except Exception as e:
             # AC-003: NATS connection failure exits with code 1
@@ -227,6 +233,7 @@ async def main(config_path: str) -> int:
                 counting_config=config.state_counting
             )
             await state_manager.start()
+            app_state.state_manager = state_manager
             logger.info("State manager started - ready to persist channel state")
         except RuntimeError as e:
             logger.error(f"Failed to start state manager: {e}")
@@ -236,6 +243,7 @@ async def main(config_path: str) -> int:
         # Connect to CyTube (automatically joins channel and authenticates)
         logger.info(f"Connecting to CyTube: {config.cytube.domain}/{config.cytube.channel}")
         connector = CytubeConnector(config.cytube, logger)
+        app_state.connector = connector
         
         # Register state callbacks BEFORE connecting
         # so initial state events from _request_initial_state() are captured
@@ -368,6 +376,7 @@ async def main(config_path: str) -> int:
             retry_attempts=3,
             retry_delay=1.0
         )
+        app_state.event_publisher = publisher
         
         # Start publisher task
         publisher_task = asyncio.create_task(publisher.run())
@@ -392,7 +401,8 @@ async def main(config_path: str) -> int:
                     nats_client=nats_client,
                     logger=logger,
                     domain=config.cytube.domain,
-                    channel=config.cytube.channel
+                    channel=config.cytube.channel,
+                    app_state=app_state
                 )
                 await state_query_handler.start()
                 logger.info("State query handler listening on: kryten.robot.command")

@@ -9,9 +9,18 @@ Commands are dispatched based on the 'command' field in the request.
 
 import json
 import logging
+from datetime import datetime, timezone
+from typing import Optional
+
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
 
 from .nats_client import NatsClient
 from .state_manager import StateManager
+from .application_state import ApplicationState
 
 
 class StateQueryHandler:
@@ -29,14 +38,18 @@ class StateQueryHandler:
         - system.health: Get service health status
         - system.channels: Get list of connected channels
         - system.version: Get Kryten-Robot version
+        - system.stats: Get comprehensive runtime statistics
+        - system.config: Get current configuration (passwords redacted)
+        - system.ping: Simple alive check
     
     Attributes:
         state_manager: StateManager instance to query.
         nats_client: NATS client for subscriptions.
         logger: Logger instance.
+        app_state: ApplicationState for runtime information.
     
     Examples:
-        >>> handler = StateQueryHandler(state_manager, nats_client, logger, "cytu.be", "mychannel")
+        >>> handler = StateQueryHandler(state_manager, nats_client, logger, "cytu.be", "mychannel", app_state)
         >>> await handler.start()
         >>> # Send command to kryten.robot.command with {"service": "robot", "command": "state.emotes"}
         >>> await handler.stop()
@@ -49,6 +62,7 @@ class StateQueryHandler:
         logger: logging.Logger,
         domain: str,
         channel: str,
+        app_state: Optional[ApplicationState] = None,
     ):
         """Initialize state query handler.
         
@@ -58,12 +72,14 @@ class StateQueryHandler:
             logger: Logger for structured output.
             domain: CyTube domain name.
             channel: CyTube channel name.
+            app_state: ApplicationState for system management features.
         """
         self._state_manager = state_manager
         self._nats = nats_client
         self._logger = logger
         self._domain = domain
         self._channel = channel
+        self._app_state = app_state
         self._running = False
         self._subscription = None
         
@@ -160,6 +176,9 @@ class StateQueryHandler:
                 "system.health": self._handle_system_health,
                 "system.channels": self._handle_system_channels,
                 "system.version": self._handle_system_version,
+                "system.stats": self._handle_system_stats,
+                "system.config": self._handle_system_config,
+                "system.ping": self._handle_system_ping,
             }
             
             handler = handler_map.get(command)
@@ -284,6 +303,198 @@ class StateQueryHandler:
         from . import __version__
         
         return {
+            "version": __version__
+        }
+    
+    async def _handle_system_stats(self, request: dict) -> dict:
+        """Get comprehensive runtime statistics.
+        
+        Returns detailed statistics including event rates, command execution,
+        connection status, memory usage, and state information.
+        
+        Returns:
+            Dictionary containing nested statistics:
+                - uptime_seconds: Total uptime
+                - events: Published events and rates
+                - commands: Command execution stats
+                - queries: Query handler stats
+                - connections: CyTube and NATS connection info
+                - state: Channel state (users, playlist, emotes)
+                - memory: Process memory usage
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for stats")
+        
+        # Calculate uptime
+        uptime = self._app_state.get_uptime()
+        
+        # Get event publisher stats
+        events_stats = {}
+        if self._app_state.event_publisher:
+            pub_stats = self._app_state.event_publisher.stats
+            last_time, last_type = pub_stats.get('last_event', (None, None))
+            events_stats = {
+                "published": pub_stats.get('events_published', 0),
+                "failed": pub_stats.get('publish_errors', 0),
+                "rate_1min": pub_stats.get('rate_1min', 0.0),
+                "rate_5min": pub_stats.get('rate_5min', 0.0),
+                "last_event_time": datetime.fromtimestamp(last_time, tz=timezone.utc).isoformat() if last_time else None,
+                "last_event_type": last_type
+            }
+        
+        # Get command subscriber stats
+        commands_stats = {}
+        if self._app_state.command_subscriber:
+            cmd_stats = self._app_state.command_subscriber.stats
+            last_time, last_type = cmd_stats.get('last_command', (None, None))
+            commands_stats = {
+                "received": cmd_stats.get('commands_processed', 0),
+                "executed": cmd_stats.get('commands_succeeded', 0),
+                "failed": cmd_stats.get('commands_failed', 0),
+                "rate_1min": cmd_stats.get('rate_1min', 0.0),
+                "last_command_time": datetime.fromtimestamp(last_time, tz=timezone.utc).isoformat() if last_time else None,
+                "last_command_type": last_type
+            }
+        
+        # Get query handler stats (self)
+        queries_stats = {
+            "processed": self._queries_processed,
+            "failed": self._queries_failed,
+            "rate_1min": 0.0  # Could add StatsTracker here too if needed
+        }
+        
+        # Get connection stats
+        connections_stats = {}
+        
+        # CyTube connection
+        cytube_stats = {"connected": False, "uptime_seconds": 0, "last_event_time": None, "reconnect_count": 0}
+        if self._app_state.connector:
+            connector = self._app_state.connector
+            connected_since = connector.connected_since
+            last_event = connector.last_event_time
+            cytube_stats = {
+                "connected": connector.is_connected,
+                "uptime_seconds": (datetime.now(timezone.utc).timestamp() - connected_since) if connected_since else 0,
+                "last_event_time": datetime.fromtimestamp(last_event, tz=timezone.utc).isoformat() if last_event else None,
+                "reconnect_count": connector.reconnect_count
+            }
+        
+        # NATS connection
+        nats_stats = {"connected": False, "uptime_seconds": 0, "server": None, "reconnect_count": 0}
+        if self._app_state.nats_client:
+            nats = self._app_state.nats_client
+            connected_since = nats.connected_since
+            nats_stats = {
+                "connected": nats.is_connected,
+                "uptime_seconds": (datetime.now(timezone.utc).timestamp() - connected_since) if connected_since else 0,
+                "server": nats.connected_url,
+                "reconnect_count": nats.reconnect_count
+            }
+        
+        connections_stats = {
+            "cytube": cytube_stats,
+            "nats": nats_stats
+        }
+        
+        # Get state counts
+        state_stats = {}
+        if self._app_state.state_manager:
+            sm = self._app_state.state_manager
+            state_stats = {
+                "users_online": sm.users_count(),
+                "playlist_items": sm.playlist_count(),
+                "emotes_count": sm.emotes_count()
+            }
+        
+        # Get memory stats (if psutil available)
+        memory_stats = {}
+        if PSUTIL_AVAILABLE:
+            try:
+                process = psutil.Process()
+                mem_info = process.memory_info()
+                memory_stats = {
+                    "rss_mb": mem_info.rss / (1024 * 1024),
+                    "vms_mb": mem_info.vms / (1024 * 1024)
+                }
+            except Exception as e:
+                self._logger.warning(f"Failed to get memory stats: {e}")
+                memory_stats = {"error": str(e)}
+        else:
+            memory_stats = {"error": "psutil not available"}
+        
+        return {
+            "uptime_seconds": uptime,
+            "events": events_stats,
+            "commands": commands_stats,
+            "queries": queries_stats,
+            "connections": connections_stats,
+            "state": state_stats,
+            "memory": memory_stats
+        }
+    
+    async def _handle_system_config(self, request: dict) -> dict:
+        """Get current effective configuration.
+        
+        Returns the running configuration with sensitive fields redacted.
+        Useful for debugging and verifying configuration changes.
+        
+        Returns:
+            Dictionary containing configuration sections with passwords redacted.
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for config")
+        
+        config = self._app_state.config
+        
+        # Build sanitized config response
+        return {
+            "cytube": {
+                "domain": config.cytube.domain,
+                "channel": config.cytube.channel,
+                "user": config.cytube.user,
+                "password": "***REDACTED***"
+            },
+            "nats": {
+                "servers": config.nats.servers,
+                "user": config.nats.user,
+                "password": "***REDACTED***" if config.nats.password else None,
+                "max_reconnect_attempts": config.nats.max_reconnect_attempts,
+                "reconnect_time_wait": config.nats.reconnect_time_wait
+            },
+            "health": {
+                "enabled": config.health.enabled,
+                "host": config.health.host,
+                "port": config.health.port
+            },
+            "commands": {
+                "enabled": config.commands.enabled
+            },
+            "logging": {
+                "format": config.logging.format,
+                "correlation_id": config.logging.correlation_id,
+                "base_path": config.logging.base_path
+            },
+            "log_level": config.log_level
+        }
+    
+    async def _handle_system_ping(self, request: dict) -> dict:
+        """Simple alive check.
+        
+        Ultra-lightweight health check that proves NATS connectivity and
+        responsiveness. Faster than full health check.
+        
+        Returns:
+            Dictionary with pong=True, timestamp, uptime, service, and version.
+        """
+        from . import __version__
+        
+        uptime = self._app_state.get_uptime() if self._app_state else 0
+        
+        return {
+            "pong": True,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "uptime_seconds": uptime,
+            "service": "robot",
             "version": __version__
         }
 
