@@ -46,6 +46,10 @@ class NatsClient:
         self._nc: Optional[NATS] = None
         self._connected = False
 
+        # Connection tracking
+        self._connected_since: Optional[float] = None
+        self._reconnect_count: int = 0
+
         # Statistics tracking
         self._messages_published = 0
         self._bytes_sent = 0
@@ -59,6 +63,35 @@ class NatsClient:
             True if connected and client is active, False otherwise.
         """
         return self._connected and self._nc is not None and self._nc.is_connected
+    
+    @property
+    def connected_since(self) -> Optional[float]:
+        """Get timestamp when connection was established.
+        
+        Returns:
+            Unix timestamp of connection time, or None if not connected.
+        """
+        return self._connected_since
+    
+    @property
+    def reconnect_count(self) -> int:
+        """Get number of reconnection attempts.
+        
+        Returns:
+            Count of reconnections since instance creation.
+        """
+        return self._reconnect_count
+    
+    @property
+    def connected_url(self) -> Optional[str]:
+        """Get the currently connected NATS server URL.
+        
+        Returns:
+            Server URL if connected, None otherwise.
+        """
+        if self._nc and self._nc.is_connected:
+            return self._nc.connected_url.netloc
+        return None
 
     @property
     def stats(self) -> Dict[str, int]:
@@ -128,6 +161,11 @@ class NatsClient:
             await self._nc.connect(**options)
 
             self._connected = True
+            
+            # Track connection timing
+            import time
+            self._connected_since = time.time()
+            
             self.logger.info(
                 "Connected to NATS",
                 extra={
@@ -176,6 +214,7 @@ class NatsClient:
         Internal method for draining, closing connection, and resetting state.
         """
         self._connected = False
+        self._connected_since = None
 
         if self._nc:
             try:
@@ -378,7 +417,15 @@ class NatsClient:
 
     async def _reconnected_callback(self) -> None:
         """Callback when reconnected to NATS."""
-        self.logger.info("Reconnected to NATS server")
+        self._reconnect_count += 1
+        
+        # Update connected_since for the new connection
+        import time
+        self._connected_since = time.time()
+        
+        self.logger.info(
+            f"Reconnected to NATS server (reconnect #{self._reconnect_count})"
+        )
         self._connected = True
 
     async def _closed_callback(self) -> None:
