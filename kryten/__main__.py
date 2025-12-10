@@ -125,7 +125,7 @@ async def main(config_path: str) -> int:
     cmd_subscriber: Optional[CommandSubscriber] = None
     health_monitor: Optional[HealthMonitor] = None
     watchdog: Optional[ConnectionWatchdog] = None
-    shutdown_event = asyncio.Event()
+    app_state: Optional[ApplicationState] = None  # Created after config load
     
     def signal_handler(signum: int, frame) -> None:
         """Handle shutdown signals (SIGINT, SIGTERM).
@@ -138,7 +138,8 @@ async def main(config_path: str) -> int:
             logger.info(f"Received {signame}, initiating graceful shutdown")
         else:
             print(f"\nReceived {signame}, initiating graceful shutdown...")
-        shutdown_event.set()
+        if app_state:
+            app_state.shutdown_event.set()
     
     try:
         # REQ-002: Load configuration
@@ -215,7 +216,7 @@ async def main(config_path: str) -> int:
             delay = data.get('delay_seconds', 5)
             logger.warning(f"Restart notice received, shutting down in {delay}s")
             await asyncio.sleep(delay)
-            shutdown_event.set()
+            app_state.shutdown_event.set()
         
         lifecycle.on_restart_notice(handle_restart_notice)
         
@@ -491,7 +492,7 @@ async def main(config_path: str) -> int:
         )
         
         # Wait for shutdown signal
-        await shutdown_event.wait()
+        await app_state.shutdown_event.wait()
         
         # REQ-007: Shutdown sequence (reverse order)
         logger.info("Beginning graceful shutdown")
