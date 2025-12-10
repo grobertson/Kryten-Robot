@@ -7,6 +7,7 @@ Follows the unified command pattern: kryten.robot.command
 Commands are dispatched based on the 'command' field in the request.
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -179,6 +180,8 @@ class StateQueryHandler:
                 "system.stats": self._handle_system_stats,
                 "system.config": self._handle_system_config,
                 "system.ping": self._handle_system_ping,
+                "system.shutdown": self._handle_system_shutdown,
+                "system.reload": self._handle_system_reload,
             }
             
             handler = handler_map.get(command)
@@ -499,6 +502,188 @@ class StateQueryHandler:
             "service": "robot",
             "version": __version__
         }
+    
+    async def _handle_system_shutdown(self, request: dict) -> dict:
+        """Initiate graceful shutdown.
+        
+        Schedules a graceful shutdown after optional delay. The shutdown is
+        performed by setting the application's shutdown_event, which triggers
+        the normal cleanup sequence in __main__.py.
+        
+        Args:
+            request: Request dict with optional 'delay_seconds' (0-300) and 'reason'
+        
+        Returns:
+            Dictionary containing:
+                - success: Always True (if validation passes)
+                - message: Acknowledgment message
+                - delay_seconds: Actual delay applied
+                - shutdown_time: ISO8601 timestamp when shutdown will occur
+        
+        Raises:
+            ValueError: If delay is invalid or ApplicationState not available
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for shutdown")
+        
+        # Parse and validate delay
+        delay_seconds = request.get('delay_seconds', 0)
+        if not isinstance(delay_seconds, (int, float)) or delay_seconds < 0 or delay_seconds > 300:
+            raise ValueError("delay_seconds must be between 0 and 300")
+        
+        delay_seconds = int(delay_seconds)
+        reason = request.get('reason', 'Remote shutdown via system.shutdown')
+        
+        # Calculate shutdown time
+        shutdown_time = datetime.now(timezone.utc).timestamp() + delay_seconds
+        shutdown_time_iso = datetime.fromtimestamp(shutdown_time, tz=timezone.utc).isoformat()
+        
+        # Log the shutdown request
+        self._logger.warning(
+            f"Shutdown requested: delay={delay_seconds}s, reason={reason}, "
+            f"scheduled_time={shutdown_time_iso}"
+        )
+        
+        # Schedule shutdown
+        async def trigger_shutdown():
+            """Wait for delay then trigger shutdown event."""
+            if delay_seconds > 0:
+                self._logger.info(f"Waiting {delay_seconds}s before shutdown...")
+                await asyncio.sleep(delay_seconds)
+            
+            self._logger.warning(f"Triggering shutdown: {reason}")
+            self._app_state.shutdown_event.set()
+        
+        # Create task to handle shutdown (non-blocking)
+        asyncio.create_task(trigger_shutdown())
+        
+        return {
+            "success": True,
+            "message": "Shutdown initiated",
+            "delay_seconds": delay_seconds,
+            "shutdown_time": shutdown_time_iso,
+            "reason": reason
+        }
+    
+    async def _handle_system_reload(self, request: dict) -> dict:
+        """Reload configuration.
+        
+        Attempts to reload configuration from file. Only "safe" changes are
+        applied - settings that can be updated without breaking connections.
+        
+        Safe changes:
+            - log_level: Immediately updates logging level
+            - nats.user/password: Will apply on next reconnect
+            - health settings: Would require health server restart (not implemented)
+        
+        Unsafe changes (rejected):
+            - cytube.domain, cytube.channel, cytube.user: Would break connection
+        
+        Args:
+            request: Request dict with optional 'config_path'
+        
+        Returns:
+            Dictionary containing:
+                - success: Whether reload succeeded
+                - message: Human-readable result message
+                - changes: Dict of what changed (key: "old -> new")
+                - errors: List of validation errors if failed
+        
+        Raises:
+            ValueError: If ApplicationState not available
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for reload")
+        
+        from .config import load_config
+        
+        # Determine config path
+        config_path = request.get('config_path', self._app_state.config_path)
+        
+        try:
+            # Load new configuration
+            self._logger.info(f"Loading configuration from {config_path}")
+            new_config = load_config(config_path)
+            
+            # Track changes
+            changes = {}
+            errors = []
+            old_config = self._app_state.config
+            
+            # Check for unsafe changes
+            if new_config.cytube.domain != old_config.cytube.domain:
+                errors.append("Cannot change cytube.domain without restart")
+            
+            if new_config.cytube.channel != old_config.cytube.channel:
+                errors.append("Cannot change cytube.channel without restart")
+            
+            if new_config.cytube.user != old_config.cytube.user:
+                errors.append("Cannot change cytube.user without restart")
+            
+            # If there are errors, reject the reload
+            if errors:
+                self._logger.warning(f"Configuration reload rejected: {errors}")
+                return {
+                    "success": False,
+                    "message": "Configuration validation failed",
+                    "changes": {},
+                    "errors": errors
+                }
+            
+            # Apply safe changes
+            
+            # 1. Log level change
+            if new_config.log_level != old_config.log_level:
+                old_level = old_config.log_level
+                new_level = new_config.log_level
+                changes["log_level"] = f"{old_level} -> {new_level}"
+                
+                # Update logging level
+                numeric_level = getattr(logging, new_level.upper(), None)
+                if numeric_level:
+                    logging.getLogger().setLevel(numeric_level)
+                    self._logger.info(f"Updated log level to {new_level}")
+            
+            # 2. NATS credentials (will apply on next reconnect)
+            if (new_config.nats.user != old_config.nats.user or 
+                new_config.nats.password != old_config.nats.password):
+                changes["nats.credentials"] = "updated (will apply on next reconnect)"
+            
+            # 3. NATS servers
+            if new_config.nats.servers != old_config.nats.servers:
+                changes["nats.servers"] = "updated (will apply on next reconnect)"
+            
+            # Update stored config
+            self._app_state.config = new_config
+            
+            self._logger.info(f"Configuration reloaded successfully: {changes}")
+            
+            return {
+                "success": True,
+                "message": "Configuration reloaded successfully",
+                "changes": changes,
+                "errors": []
+            }
+        
+        except FileNotFoundError:
+            error_msg = f"Configuration file not found: {config_path}"
+            self._logger.error(error_msg)
+            return {
+                "success": False,
+                "message": "Configuration reload failed",
+                "changes": {},
+                "errors": [error_msg]
+            }
+        
+        except Exception as e:
+            error_msg = f"Failed to load configuration: {str(e)}"
+            self._logger.error(f"Configuration reload error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": "Configuration reload failed",
+                "changes": {},
+                "errors": [error_msg]
+            }
 
 
 __all__ = ["StateQueryHandler"]
