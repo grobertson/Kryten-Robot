@@ -470,9 +470,11 @@ class StateQueryHandler:
                 "enabled": config.commands.enabled
             },
             "logging": {
-                "format": config.logging.format,
-                "correlation_id": config.logging.correlation_id,
-                "base_path": config.logging.base_path
+                "base_path": config.logging.base_path,
+                "admin_operations": config.logging.admin_operations,
+                "playlist_operations": config.logging.playlist_operations,
+                "chat_messages": config.logging.chat_messages,
+                "command_audit": config.logging.command_audit
             },
             "log_level": config.log_level
         }
