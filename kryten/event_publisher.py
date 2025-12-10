@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 from .cytube_connector import CytubeConnector
 from .nats_client import NatsClient
 from .raw_event import RawEvent
+from .stats_tracker import StatsTracker
 from .subject_builder import build_event_subject
 
 
@@ -77,6 +78,9 @@ class EventPublisher:
         self._events_published = 0
         self._publish_errors = 0
         self._total_publish_time = 0.0
+        
+        # Rate tracking
+        self._stats_tracker = StatsTracker()
 
     @property
     def is_running(self) -> bool:
@@ -101,12 +105,13 @@ class EventPublisher:
 
         Returns:
             Dictionary with events_received, events_published, publish_errors,
-            average_publish_time_ms, and success_rate.
+            average_publish_time_ms, success_rate, and rate information.
 
         Examples:
             >>> stats = publisher.stats
             >>> print(f"Published: {stats['events_published']}")
             >>> print(f"Success rate: {stats['success_rate']:.1%}")
+            >>> print(f"Rate (1m): {stats['rate_1min']:.2f}/sec")
         """
         avg_time_ms = 0.0
         if self._events_published > 0:
@@ -115,6 +120,9 @@ class EventPublisher:
         success_rate = 0.0
         if self._events_received > 0:
             success_rate = self._events_published / self._events_received
+        
+        # Get rate information from StatsTracker
+        last_time, last_type = self._stats_tracker.get_last()
 
         return {
             "events_received": self._events_received,
@@ -122,6 +130,10 @@ class EventPublisher:
             "publish_errors": self._publish_errors,
             "average_publish_time_ms": avg_time_ms,
             "success_rate": success_rate,
+            "rate_1min": self._stats_tracker.get_rate(60),
+            "rate_5min": self._stats_tracker.get_rate(300),
+            "last_event_time": last_time,
+            "last_event_type": last_type,
         }
 
     async def run(self) -> None:
@@ -289,6 +301,7 @@ class EventPublisher:
 
                 # Update stats
                 self._events_published += 1
+                self._stats_tracker.record(event.event_name)
 
                 # Log success
                 self.logger.info(
