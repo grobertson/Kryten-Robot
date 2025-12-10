@@ -67,7 +67,10 @@ try {
     Write-Host ""
 
     # Build Python command arguments
-    $pythonArgs = @("-m", "kryten", $ConfigFile)
+    $pythonArgs = @("-m", "kryten")
+    if (Test-Path $ConfigFile) {
+        $pythonArgs += @("--config", $ConfigFile)
+    }
     
     # Set log level environment variable if specified
     if ($LogLevel) {

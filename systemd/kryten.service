@@ -11,8 +11,9 @@ Group=kryten
 WorkingDirectory=/opt/kryten/Kryten-Robot
 Environment="PATH=/opt/kryten/Kryten-Robot/venv/bin:/usr/local/bin:/usr/bin:/bin"
 
-# Main service command
-ExecStart=/opt/kryten/Kryten-Robot/venv/bin/python -m kryten /opt/kryten/etc/Kryten-Robot/config.json
+# Main service command - uses default path /etc/kryten/kryten-robot/config.json
+# Or specify custom path with: --config /path/to/config.json
+ExecStart=/opt/kryten/Kryten-Robot/venv/bin/python -m kryten
 
 # Restart policy
 Restart=on-failure

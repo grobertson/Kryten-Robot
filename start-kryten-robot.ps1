@@ -227,7 +227,13 @@ $env:PYTHONPATH = $ScriptDir
 # Step 6: Run the application
 Write-Host ""
 Write-Host "Starting Kryten-Robot..." -ForegroundColor Green
-Write-Host "Config: $ConfigPath" -ForegroundColor Gray
+if (Test-Path $ConfigPath) {
+    Write-Host "Config: $ConfigPath" -ForegroundColor Gray
+    $configArg = @("--config", $ConfigPath)
+} else {
+    Write-Host "Using default config paths" -ForegroundColor Gray
+    $configArg = @()
+}
 if ($LogLevel) {
     Write-Host "Log Level: $LogLevel" -ForegroundColor Gray
     $env:KRYTEN_LOG_LEVEL = $LogLevel
@@ -236,7 +242,7 @@ Write-Host "Press Ctrl+C to stop" -ForegroundColor Gray
 Write-Host ""
 
 try {
-    & $VenvPython -m kryten $ConfigPath
+    & $VenvPython -m kryten @configArg
     
     $exitCode = $LASTEXITCODE
     
