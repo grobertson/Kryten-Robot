@@ -220,7 +220,12 @@ async def main(config_path: str) -> int:
         # This ensures callbacks are ready when initial state events arrive
         try:
             logger.info("Starting state manager")
-            state_manager = StateManager(nats_client, config.cytube.channel, logger)
+            state_manager = StateManager(
+                nats_client, 
+                config.cytube.channel, 
+                logger,
+                counting_config=config.state_counting
+            )
             await state_manager.start()
             logger.info("State manager started - ready to persist channel state")
         except RuntimeError as e:
