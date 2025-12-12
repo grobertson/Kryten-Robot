@@ -211,6 +211,9 @@ async def main(config_path: str) -> int:
             version=__version__
         )
         await lifecycle.start()
+        
+        # Publish startup event
+        await lifecycle.publish_startup()
 
         # Register restart handler
         async def handle_restart_notice(data: dict):
