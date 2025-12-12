@@ -228,6 +228,35 @@ async def main(config_path: str) -> int:
         # Publish NATS connection event
         await lifecycle.publish_connected("NATS", servers=config.nats.servers)
 
+        # Start service registry to track microservices
+        from .service_registry import ServiceRegistry
+        service_registry = ServiceRegistry(nats_client, logger)
+        
+        # Register callbacks for service events
+        def on_service_registered(service_info):
+            logger.info(
+                f"🔵 Service registered: {service_info.name} v{service_info.version} "
+                f"on {service_info.hostname}"
+            )
+        
+        def on_service_heartbeat(service_info):
+            # Only log every 10th heartbeat to avoid spam
+            if service_info.heartbeat_count % 10 == 0:
+                logger.debug(
+                    f"💓 Heartbeat from {service_info.name} "
+                    f"(count: {service_info.heartbeat_count})"
+                )
+        
+        def on_service_shutdown(service_name):
+            logger.warning(f"🔴 Service shutdown: {service_name}")
+        
+        service_registry.on_service_registered(on_service_registered)
+        service_registry.on_service_heartbeat(on_service_heartbeat)
+        service_registry.on_service_shutdown(on_service_shutdown)
+        
+        await service_registry.start()
+        app_state.service_registry = service_registry
+
         # REQ-XXX: Start state manager BEFORE connecting to CyTube
         # This ensures callbacks are ready when initial state events arrive
         try:
@@ -519,7 +548,16 @@ async def main(config_path: str) -> int:
             except Exception as e:
                 logger.error(f"Error stopping health monitor: {e}")
 
-        # 2. Stop state query handler
+        # 2. Stop service registry
+        if service_registry:
+            logger.info("Stopping service registry")
+            try:
+                await service_registry.stop()
+                logger.info("Service registry stopped")
+            except Exception as e:
+                logger.error(f"Error stopping service registry: {e}")
+
+        # 3. Stop state query handler
         if state_query_handler:
             logger.info("Stopping state query handler")
             try:
@@ -528,7 +566,7 @@ async def main(config_path: str) -> int:
             except Exception as e:
                 logger.error(f"Error stopping state query handler: {e}")
 
-        # 2b. Unsubscribe user level query handler
+        # 3b. Unsubscribe user level query handler
         if user_level_subscription:
             try:
                 logger.info("Stopping user level query handler")
@@ -538,7 +576,7 @@ async def main(config_path: str) -> int:
             except Exception as e:
                 logger.error(f"Error stopping user level query handler: {e}")
 
-        # 3. Stop state manager
+        # 4. Stop state manager
         if state_manager:
             logger.info("Stopping state manager")
             try:
@@ -547,7 +585,7 @@ async def main(config_path: str) -> int:
             except Exception as e:
                 logger.error(f"Error stopping state manager: {e}")
 
-        # 4. Stop command subscriber
+        # 5. Stop command subscriber
         if cmd_subscriber:
             logger.info("Stopping command subscriber")
             try:
@@ -556,7 +594,7 @@ async def main(config_path: str) -> int:
             except Exception as e:
                 logger.error(f"Error stopping command subscriber: {e}")
 
-        # 5. Stop publisher (completes current event processing)
+        # 6. Stop publisher (completes current event processing)
         if publisher:
             logger.info("Stopping event publisher")
             try:

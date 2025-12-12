@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .cytube_connector import CytubeConnector
     from .event_publisher import EventPublisher
     from .nats_client import NatsClient
+    from .service_registry import ServiceRegistry
     from .state_manager import StateManager
 
 
@@ -34,6 +35,7 @@ class ApplicationState:
         connector: CytubeConnector instance (set after initialization).
         nats_client: NatsClient instance (set after initialization).
         state_manager: StateManager instance (set after initialization).
+        service_registry: ServiceRegistry instance (set after initialization).
 
     Examples:
         >>> from .config import load_config
@@ -66,6 +68,7 @@ class ApplicationState:
         self.connector: CytubeConnector | None = None
         self.nats_client: NatsClient | None = None
         self.state_manager: StateManager | None = None
+        self.service_registry: ServiceRegistry | None = None
 
     def get_uptime(self) -> float:
         """Get application uptime in seconds.
