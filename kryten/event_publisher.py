@@ -78,7 +78,7 @@ class EventPublisher:
         self._events_published = 0
         self._publish_errors = 0
         self._total_publish_time = 0.0
-        
+
         # Log throttling for noisy events
         self._media_update_count = 0
         self._media_update_log_interval = 20  # Log every N occurrences
@@ -320,17 +320,32 @@ class EventPublisher:
                 self._events_published += 1
                 self._stats_tracker.record(event.event_name)
 
-                # Log success
-                self.logger.info(
-                    f"Published event '{event.event_name}' to NATS subject: {subject}",
-                    extra={
-                        "subject": subject,
-                        "event_name": event.event_name,
-                        "correlation_id": event.correlation_id,
-                        "size": len(event_bytes),
-                        "elapsed_ms": elapsed * 1000,
-                    },
-                )
+                # Log success (throttle noisy events like mediaUpdate)
+                if event.event_name == "mediaUpdate":
+                    # Only log at same interval as receive logging
+                    if self._media_update_count % self._media_update_log_interval == 1:
+                        self.logger.info(
+                            f"Published event '{event.event_name}' to NATS subject: {subject} (#{self._media_update_count}, logging every {self._media_update_log_interval})",
+                            extra={
+                                "subject": subject,
+                                "event_name": event.event_name,
+                                "correlation_id": event.correlation_id,
+                                "size": len(event_bytes),
+                                "elapsed_ms": elapsed * 1000,
+                                "count": self._media_update_count,
+                            },
+                        )
+                else:
+                    self.logger.info(
+                        f"Published event '{event.event_name}' to NATS subject: {subject}",
+                        extra={
+                            "subject": subject,
+                            "event_name": event.event_name,
+                            "correlation_id": event.correlation_id,
+                            "size": len(event_bytes),
+                            "elapsed_ms": elapsed * 1000,
+                        },
+                    )
 
                 return  # Success!
 
