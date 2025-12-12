@@ -411,7 +411,6 @@ async def main(config_path: str) -> int:
                     app_state=app_state
                 )
                 await state_query_handler.start()
-                logger.info("State query handler listening on: kryten.robot.command")
             except Exception as e:
                 logger.error(f"Failed to start state query handler: {e}", exc_info=True)
                 logger.warning("Continuing without state query endpoint")
@@ -448,7 +447,7 @@ async def main(config_path: str) -> int:
                         except Exception as reply_error:
                             logger.error(f"Failed to send error response: {reply_error}")
 
-            user_level_subject = f"cytube.user_level.{config.cytube.domain}.{config.cytube.channel}"
+            user_level_subject = f"kryten.user_level.{config.cytube.domain}.{config.cytube.channel}"
             user_level_subscription = await nats_client.subscribe(
                 subject=user_level_subject,
                 callback=handle_user_level_query
