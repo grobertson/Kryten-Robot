@@ -211,7 +211,8 @@ class StateManager:
             js = self._nats._nc.jetstream()
 
             # Create or bind KV buckets
-            bucket_prefix = f"cytube_{self._channel}"
+            # Format: kryten_{channel}_{type}
+            bucket_prefix = f"kryten_{self._channel}"
 
             # Emotes bucket
             try:
@@ -221,7 +222,7 @@ class StateManager:
                 self._kv_emotes = await js.create_key_value(
                     config=api.KeyValueConfig(
                         bucket=f"{bucket_prefix}_emotes",
-                        description=f"CyTube {self._channel} emotes",
+                        description=f"Kryten {self._channel} emotes",
                         max_value_size=1024 * 1024,  # 1MB max
                     )
                 )
@@ -235,7 +236,7 @@ class StateManager:
                 self._kv_playlist = await js.create_key_value(
                     config=api.KeyValueConfig(
                         bucket=f"{bucket_prefix}_playlist",
-                        description=f"CyTube {self._channel} playlist",
+                        description=f"Kryten {self._channel} playlist",
                         max_value_size=10 * 1024 * 1024,  # 10MB max
                     )
                 )
@@ -249,7 +250,7 @@ class StateManager:
                 self._kv_userlist = await js.create_key_value(
                     config=api.KeyValueConfig(
                         bucket=f"{bucket_prefix}_userlist",
-                        description=f"CyTube {self._channel} users",
+                        description=f"Kryten {self._channel} users",
                         max_value_size=1024 * 1024,  # 1MB max
                     )
                 )

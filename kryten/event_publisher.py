@@ -78,6 +78,10 @@ class EventPublisher:
         self._events_published = 0
         self._publish_errors = 0
         self._total_publish_time = 0.0
+        
+        # Log throttling for noisy events
+        self._media_update_count = 0
+        self._media_update_log_interval = 20  # Log every N occurrences
 
         # Rate tracking
         self._stats_tracker = StatsTracker()
@@ -204,13 +208,26 @@ class EventPublisher:
                         },
                     )
                 else:
-                    self.logger.info(
-                        f"Received event: {event_name}",
-                        extra={
-                            "event_name": event_name,
-                            "correlation_id": raw_event.correlation_id,
-                        },
-                    )
+                    # Throttle logging for noisy events like mediaUpdate
+                    if event_name == "mediaUpdate":
+                        self._media_update_count += 1
+                        if self._media_update_count % self._media_update_log_interval == 1:
+                            self.logger.info(
+                                f"Received event: {event_name} (#{self._media_update_count}, logging every {self._media_update_log_interval})",
+                                extra={
+                                    "event_name": event_name,
+                                    "correlation_id": raw_event.correlation_id,
+                                    "count": self._media_update_count,
+                                },
+                            )
+                    else:
+                        self.logger.info(
+                            f"Received event: {event_name}",
+                            extra={
+                                "event_name": event_name,
+                                "correlation_id": raw_event.correlation_id,
+                            },
+                        )
 
                 # Build NATS subject
                 try:
