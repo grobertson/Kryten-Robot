@@ -161,21 +161,21 @@ class ServiceRegistry:
         
         try:
             # Subscribe to startup events from all services
-            self._startup_sub = await self._nats.subscribe(
+            self._startup_sub = await self._nats.subscribe_request_reply(
                 "kryten.lifecycle.*.startup",
                 callback=self._handle_startup
             )
             self._logger.info("Subscribed to kryten.lifecycle.*.startup")
             
             # Subscribe to heartbeat events from all services
-            self._heartbeat_sub = await self._nats.subscribe(
+            self._heartbeat_sub = await self._nats.subscribe_request_reply(
                 "kryten.lifecycle.*.heartbeat",
                 callback=self._handle_heartbeat
             )
             self._logger.info("Subscribed to kryten.lifecycle.*.heartbeat")
             
             # Subscribe to shutdown events from all services
-            self._shutdown_sub = await self._nats.subscribe(
+            self._shutdown_sub = await self._nats.subscribe_request_reply(
                 "kryten.lifecycle.*.shutdown",
                 callback=self._handle_shutdown
             )
