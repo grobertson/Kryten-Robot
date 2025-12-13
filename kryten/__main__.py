@@ -413,11 +413,65 @@ async def main(config_path: str) -> int:
         )
         app_state.event_publisher = publisher
 
-        # Register kick handler - if we're kicked from the channel, shutdown gracefully
+        # Track reconnect task to avoid multiple concurrent reconnects
+        reconnect_task: asyncio.Task | None = None
+
+        async def attempt_reconnect():
+            """Attempt to reconnect to CyTube after being kicked."""
+            nonlocal reconnect_task
+            try:
+                # Wait a bit before reconnecting to avoid rapid reconnect loops
+                reconnect_delay = 5.0
+                logger.info(f"Waiting {reconnect_delay}s before attempting reconnect...")
+                await asyncio.sleep(reconnect_delay)
+
+                # Stop the publisher first
+                logger.info("Stopping event publisher for reconnect...")
+                await publisher.stop()
+
+                # Disconnect from CyTube
+                logger.info("Disconnecting from CyTube for reconnect...")
+                await connector.disconnect()
+
+                # Attempt to reconnect
+                logger.info("Attempting to reconnect to CyTube...")
+                await connector.connect()
+                logger.info("Successfully reconnected to CyTube")
+
+                # Publish reconnection event via lifecycle
+                if lifecycle and nats_client and nats_client.is_connected:
+                    await lifecycle.publish_connected(
+                        "CyTube",
+                        domain=config.cytube.domain,
+                        channel=config.cytube.channel,
+                        note="Reconnected after kick"
+                    )
+
+                # Restart the publisher
+                nonlocal publisher_task
+                publisher_task = asyncio.create_task(publisher.run())
+                logger.info("Event publisher restarted after reconnect")
+
+            except Exception as e:
+                logger.error(f"Failed to reconnect to CyTube: {e}", exc_info=True)
+                logger.warning("Falling back to graceful shutdown for systemd restart")
+                app_state.shutdown_event.set()
+            finally:
+                reconnect_task = None
+
+        # Register kick handler - behavior depends on aggressive_reconnect setting
         def handle_kicked():
-            """Handle being kicked from channel by initiating shutdown."""
-            logger.warning("Kicked from channel - initiating graceful shutdown for systemd restart")
-            app_state.shutdown_event.set()
+            """Handle being kicked from channel."""
+            nonlocal reconnect_task
+            if config.cytube.aggressive_reconnect:
+                logger.warning("Kicked from channel - aggressive_reconnect enabled, attempting reconnect")
+                if reconnect_task is None or reconnect_task.done():
+                    reconnect_task = asyncio.create_task(attempt_reconnect())
+                else:
+                    logger.warning("Reconnect already in progress, ignoring duplicate kick")
+            else:
+                logger.warning("Kicked from channel - initiating graceful shutdown for systemd restart")
+                app_state.shutdown_event.set()
 
         publisher.on_kicked(handle_kicked)
 

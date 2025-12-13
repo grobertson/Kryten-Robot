@@ -28,6 +28,8 @@ class CytubeConfig:
         channel_password: Optional password for password-protected channels.
         user: Optional username for authentication.
         password: Optional password for user authentication.
+        aggressive_reconnect: If True, attempt to reconnect when kicked instead
+            of shutting down. Default: False.
 
     Examples:
         >>> cfg = CytubeConfig(domain="cytu.be", channel="test")
@@ -40,6 +42,7 @@ class CytubeConfig:
     channel_password: str | None = None
     user: str | None = None
     password: str | None = None
+    aggressive_reconnect: bool = False
 
 
 @dataclass
@@ -261,12 +264,16 @@ def _load_cytube_config(data: dict) -> CytubeConfig:
     if ENV_CYTUBE_PASSWORD in os.environ:
         password = os.environ[ENV_CYTUBE_PASSWORD]
 
+    # Extract aggressive_reconnect option (default: False)
+    aggressive_reconnect = bool(cytube_data.get("aggressive_reconnect", False))
+
     return CytubeConfig(
         domain=domain,
         channel=channel,
         channel_password=channel_password,
         user=user,
         password=password,
+        aggressive_reconnect=aggressive_reconnect,
     )
 
 
