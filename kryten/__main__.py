@@ -413,6 +413,14 @@ async def main(config_path: str) -> int:
         )
         app_state.event_publisher = publisher
 
+        # Register kick handler - if we're kicked from the channel, shutdown gracefully
+        def handle_kicked():
+            """Handle being kicked from channel by initiating shutdown."""
+            logger.warning("Kicked from channel - initiating graceful shutdown for systemd restart")
+            app_state.shutdown_event.set()
+
+        publisher.on_kicked(handle_kicked)
+
         # Start publisher task
         publisher_task = asyncio.create_task(publisher.run())
         logger.info("Event publisher started")

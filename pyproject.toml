@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "kryten-robot"
-version = "0.6.6"
+version = "0.6.7"
 description = "CyTube to NATS bridge connector - publishes CyTube events to NATS message bus"
 authors = ["Kryten Robot Team"]
 readme = "README.md"

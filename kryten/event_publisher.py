@@ -8,6 +8,7 @@ appropriate NATS subjects.
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 from .cytube_connector import CytubeConnector
@@ -73,6 +74,9 @@ class EventPublisher:
         self._running = False
         self._stop_requested = False
 
+        # Kick detection callback
+        self._on_kicked: Callable[[], None] | None = None
+
         # Statistics
         self._events_received = 0
         self._events_published = 0
@@ -86,6 +90,20 @@ class EventPublisher:
 
         # Rate tracking
         self._stats_tracker = StatsTracker()
+
+    def on_kicked(self, callback: Callable[[], None]) -> None:
+        """Register callback to be called when bot is kicked from channel.
+
+        Args:
+            callback: Function to call when a kick event is detected.
+                      This should trigger graceful shutdown.
+
+        Examples:
+            >>> def handle_kick():
+            ...     app_state.shutdown_event.set()
+            >>> publisher.on_kicked(handle_kick)
+        """
+        self._on_kicked = callback
 
     @property
     def is_running(self) -> bool:
@@ -180,6 +198,20 @@ class EventPublisher:
                     break
 
                 self._events_received += 1
+
+                # Detect kick event - this means we were kicked from the channel
+                if event_name == "kick":
+                    kicked_user = payload.get("name", "")
+                    reason = payload.get("reason", "No reason given")
+                    self.logger.warning(
+                        f"Received kick event: user={kicked_user}, reason={reason}",
+                        extra={"kicked_user": kicked_user, "reason": reason},
+                    )
+                    # If we have a kick callback, trigger it to initiate shutdown
+                    if self._on_kicked:
+                        self.logger.warning("Bot was kicked from channel, initiating graceful shutdown")
+                        self._on_kicked()
+                        # Continue processing to publish the kick event to NATS before shutting down
 
                 # Create RawEvent wrapper
                 raw_event = RawEvent(
