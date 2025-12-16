@@ -648,11 +648,15 @@ class SocketIO:
                 self.error = ConnectionClosed()
 
         except (OSError, WebSocketConnectionClosed, InvalidState, PayloadTooBig, WebSocketProtocolError) as ex:
-            self.logger.error("recv error: %r", ex)
+            self.logger.warning(
+                "Connection closed: %s - %s",
+                type(ex).__name__,
+                str(ex) or "no details"
+            )
             self.error = ConnectionClosed(str(ex))
 
         except Exception as ex:
-            self.logger.exception("unexpected recv error")
+            self.logger.exception("Unexpected connection error")
             self.error = ConnectionClosed(str(ex))
             raise
 
@@ -674,10 +678,11 @@ class SocketIO:
                 event_data = None
 
             elif packet_type == "1":
-                # Disconnect packet
-                self.logger.debug("socket.io disconnect: %s", data[2:])
-                event = data[2:]
-                event_data = None
+                # Disconnect packet - server is closing the connection
+                self.logger.warning("Socket.IO disconnect packet received from server: %s", data[2:])
+                # Set error to trigger connection closure
+                self.error = ConnectionClosed("Server sent disconnect packet")
+                return  # Don't process further, connection is closing
 
             elif packet_type == "2":
                 # Event packet: "42[event, data, ...]"

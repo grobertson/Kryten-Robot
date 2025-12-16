@@ -172,7 +172,8 @@ async def main(config_path: str) -> int:
                 "admin_operations": config.logging.admin_operations,
                 "playlist_operations": config.logging.playlist_operations,
                 "chat_messages": config.logging.chat_messages,
-                "command_audit": config.logging.command_audit
+                "command_audit": config.logging.command_audit,
+                "connection_events": config.logging.connection_events
             }
         )
         logger.info(f"Audit logging initialized: {config.logging.base_path}")
@@ -180,6 +181,7 @@ async def main(config_path: str) -> int:
         logger.info(f"  - Playlist operations: {config.logging.playlist_operations}")
         logger.info(f"  - Chat messages: {config.logging.chat_messages}")
         logger.info(f"  - Command audit: {config.logging.command_audit}")
+        logger.info(f"  - Connection events: {config.logging.connection_events}")
 
         # Create ApplicationState for system management
         app_state = ApplicationState(config_path=config_path, config=config)
@@ -198,9 +200,17 @@ async def main(config_path: str) -> int:
             await nats_client.connect()
             app_state.nats_client = nats_client
             logger.info("Successfully connected to NATS")
+            audit_logger.log_connection_event(
+                "connect", "NATS",
+                details={"servers": ",".join(config.nats.servers)}
+            )
         except Exception as e:
             # AC-003: NATS connection failure exits with code 1
             logger.error(f"Failed to connect to NATS: {e}", exc_info=True)
+            audit_logger.log_connection_event(
+                "error", "NATS",
+                error=str(e)
+            )
             return 1
 
         # Start lifecycle event publisher
@@ -211,7 +221,7 @@ async def main(config_path: str) -> int:
             version=__version__
         )
         await lifecycle.start()
-        
+
         # Publish startup event
         await lifecycle.publish_startup()
 
@@ -231,14 +241,14 @@ async def main(config_path: str) -> int:
         # Start service registry to track microservices
         from .service_registry import ServiceRegistry
         service_registry = ServiceRegistry(nats_client, logger)
-        
+
         # Register callbacks for service events
         def on_service_registered(service_info):
             logger.info(
                 f"🔵 Service registered: {service_info.name} v{service_info.version} "
                 f"on {service_info.hostname}"
             )
-        
+
         def on_service_heartbeat(service_info):
             # Only log every 10th heartbeat to avoid spam
             if service_info.heartbeat_count % 10 == 0:
@@ -246,14 +256,14 @@ async def main(config_path: str) -> int:
                     f"💓 Heartbeat from {service_info.name} "
                     f"(count: {service_info.heartbeat_count})"
                 )
-        
+
         def on_service_shutdown(service_name):
             logger.warning(f"🔴 Service shutdown: {service_name}")
-        
+
         service_registry.on_service_registered(on_service_registered)
         service_registry.on_service_heartbeat(on_service_heartbeat)
         service_registry.on_service_shutdown(on_service_shutdown)
-        
+
         await service_registry.start()
         app_state.service_registry = service_registry
 
@@ -354,16 +364,16 @@ async def main(config_path: str) -> int:
         connector.on_event("chatMsg", handle_chat_message)
         logger.info("Chat message logging registered")
 
-        # Start connection watchdog to detect stale connections
-        async def handle_watchdog_timeout():
-            """Handle connection watchdog timeout by initiating shutdown."""
-            logger.error("Connection watchdog timeout - no events received")
-            logger.info("Initiating reconnection via graceful shutdown")
-            app_state.shutdown_event.set()
+        # Placeholder for watchdog timeout handler (set properly after attempt_reconnect is defined)
+        async def placeholder_timeout() -> None:
+            """Placeholder - will be replaced after reconnect function is defined."""
+            pass
 
+        # Start connection watchdog to detect stale connections
+        # Note: The watchdog timeout handler is defined later, after attempt_reconnect is available
         watchdog = ConnectionWatchdog(
             timeout=120.0,  # 2 minutes without events triggers reconnection
-            on_timeout=handle_watchdog_timeout,
+            on_timeout=placeholder_timeout,
             logger=logger,
             enabled=True
         )
@@ -384,6 +394,10 @@ async def main(config_path: str) -> int:
         try:
             await connector.connect()
             logger.info("Successfully connected to CyTube")
+            audit_logger.log_connection_event(
+                "connect", "CyTube",
+                details={"domain": config.cytube.domain, "channel": config.cytube.channel}
+            )
 
             # Publish CyTube connection event
             await lifecycle.publish_connected(
@@ -394,6 +408,11 @@ async def main(config_path: str) -> int:
         except KrytenConnectionError as e:
             # AC-004: CyTube connection failure
             logger.error(f"Failed to connect to CyTube: {e}", exc_info=True)
+            audit_logger.log_connection_event(
+                "error", "CyTube",
+                details={"domain": config.cytube.domain, "channel": config.cytube.channel},
+                error=str(e)
+            )
             # Cleanup
             await lifecycle.publish_shutdown(reason="Failed to connect to CyTube")
             await lifecycle.stop()
@@ -416,21 +435,31 @@ async def main(config_path: str) -> int:
         # Track reconnect task to avoid multiple concurrent reconnects
         reconnect_task: asyncio.Task | None = None
 
-        async def attempt_reconnect():
-            """Attempt to reconnect to CyTube after being kicked."""
+        # Declare publisher_task early so nonlocal reference works in attempt_reconnect
+        publisher_task: asyncio.Task | None = None
+
+        async def attempt_reconnect(reason: str = "unknown"):
+            """Attempt to reconnect to CyTube after connection loss."""
             nonlocal reconnect_task
             try:
+                # Log disconnection event
+                audit_logger.log_connection_event(
+                    "disconnect", "CyTube",
+                    details={"domain": config.cytube.domain, "channel": config.cytube.channel},
+                    error=reason
+                )
+
                 # Wait a bit before reconnecting to avoid rapid reconnect loops
                 reconnect_delay = 5.0
-                logger.info(f"Waiting {reconnect_delay}s before attempting reconnect...")
+                logger.info(f"Waiting {reconnect_delay}s before attempting reconnect (reason: {reason})...")
                 await asyncio.sleep(reconnect_delay)
 
                 # Stop the publisher first
                 logger.info("Stopping event publisher for reconnect...")
                 await publisher.stop()
 
-                # Disconnect from CyTube
-                logger.info("Disconnecting from CyTube for reconnect...")
+                # Disconnect from CyTube (cleanup any remaining state)
+                logger.info("Cleaning up CyTube connection for reconnect...")
                 await connector.disconnect()
 
                 # Attempt to reconnect
@@ -438,13 +467,23 @@ async def main(config_path: str) -> int:
                 await connector.connect()
                 logger.info("Successfully reconnected to CyTube")
 
+                # Log successful reconnection
+                audit_logger.log_connection_event(
+                    "reconnect", "CyTube",
+                    details={
+                        "domain": config.cytube.domain,
+                        "channel": config.cytube.channel,
+                        "reason": reason
+                    }
+                )
+
                 # Publish reconnection event via lifecycle
                 if lifecycle and nats_client and nats_client.is_connected:
                     await lifecycle.publish_connected(
                         "CyTube",
                         domain=config.cytube.domain,
                         channel=config.cytube.channel,
-                        note="Reconnected after kick"
+                        note=f"Reconnected after: {reason}"
                     )
 
                 # Restart the publisher
@@ -454,6 +493,11 @@ async def main(config_path: str) -> int:
 
             except Exception as e:
                 logger.error(f"Failed to reconnect to CyTube: {e}", exc_info=True)
+                audit_logger.log_connection_event(
+                    "error", "CyTube",
+                    details={"domain": config.cytube.domain, "channel": config.cytube.channel},
+                    error=f"Reconnect failed: {e}"
+                )
                 logger.warning("Falling back to graceful shutdown for systemd restart")
                 app_state.shutdown_event.set()
             finally:
@@ -466,7 +510,7 @@ async def main(config_path: str) -> int:
             if config.cytube.aggressive_reconnect:
                 logger.warning("Kicked from channel - aggressive_reconnect enabled, attempting reconnect")
                 if reconnect_task is None or reconnect_task.done():
-                    reconnect_task = asyncio.create_task(attempt_reconnect())
+                    reconnect_task = asyncio.create_task(attempt_reconnect("kicked"))
                 else:
                     logger.warning("Reconnect already in progress, ignoring duplicate kick")
             else:
@@ -474,6 +518,48 @@ async def main(config_path: str) -> int:
                 app_state.shutdown_event.set()
 
         publisher.on_kicked(handle_kicked)
+
+        # Register connection loss handler for detecting CyTube disconnects
+        def handle_connection_lost(event_name: str, payload: dict):
+            """Handle CyTube connection loss (detected by socket closure)."""
+            nonlocal reconnect_task
+            reason = payload.get("reason", "connection lost")
+            logger.warning(f"CyTube connection lost: {reason}")
+
+            if config.cytube.aggressive_reconnect:
+                logger.info("aggressive_reconnect enabled - attempting automatic reconnection")
+                if reconnect_task is None or reconnect_task.done():
+                    reconnect_task = asyncio.create_task(attempt_reconnect(reason))
+                else:
+                    logger.warning("Reconnect already in progress, ignoring duplicate connection loss")
+            else:
+                logger.warning("Initiating graceful shutdown for systemd restart")
+                app_state.shutdown_event.set()
+
+        connector.on_event("_connection_lost", handle_connection_lost)
+
+        # Now set the proper watchdog timeout handler that respects aggressive_reconnect
+        async def handle_watchdog_timeout():
+            """Handle connection watchdog timeout by attempting reconnect or shutdown."""
+            nonlocal reconnect_task
+            logger.error("Connection watchdog timeout - no events received for 2+ minutes")
+            audit_logger.log_connection_event(
+                "timeout", "CyTube",
+                details={"domain": config.cytube.domain, "channel": config.cytube.channel},
+                error="Watchdog timeout - no events received"
+            )
+
+            if config.cytube.aggressive_reconnect:
+                logger.info("aggressive_reconnect enabled - attempting reconnection")
+                if reconnect_task is None or reconnect_task.done():
+                    reconnect_task = asyncio.create_task(attempt_reconnect("watchdog timeout"))
+                else:
+                    logger.warning("Reconnect already in progress")
+            else:
+                logger.warning("Initiating graceful shutdown for systemd restart")
+                app_state.shutdown_event.set()
+
+        watchdog.on_timeout = handle_watchdog_timeout
 
         # Start publisher task
         publisher_task = asyncio.create_task(publisher.run())
@@ -591,8 +677,19 @@ async def main(config_path: str) -> int:
 
         # REQ-007: Shutdown sequence (reverse order)
         logger.info("Beginning graceful shutdown")
+        audit_logger.log_connection_event("shutdown", "kryten-robot", details={"type": "graceful"})
 
-        # 0. Stop watchdog first to prevent triggering during shutdown
+        # 0. Cancel any in-progress reconnect task
+        if reconnect_task and not reconnect_task.done():
+            logger.info("Cancelling in-progress reconnect task")
+            reconnect_task.cancel()
+            try:
+                await reconnect_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Reconnect task cancelled")
+
+        # 0b. Stop watchdog first to prevent triggering during shutdown
         if watchdog:
             logger.info("Stopping connection watchdog")
             try:

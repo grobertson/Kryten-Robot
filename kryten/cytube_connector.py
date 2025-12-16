@@ -594,7 +594,10 @@ class CytubeConnector:
 
         Runs as a background task from connect() until disconnect().
         Handles queue overflow by dropping oldest events with warnings.
+        Detects socket closure and marks connector as disconnected.
         """
+        from .socket_io import ConnectionClosed as SocketIOConnectionClosed
+
         try:
             while self._connected and self._socket:
                 try:
@@ -628,19 +631,46 @@ class CytubeConnector:
                     self._fire_callbacks(event_name, payload)
 
                 except asyncio.CancelledError:
+                    self.logger.debug("Event consumer cancelled")
                     break
+
+                except SocketIOConnectionClosed as e:
+                    # Socket has been closed by server or network issue
+                    self.logger.warning(
+                        f"Socket connection closed: {e}",
+                        extra={"was_connected": self._connected}
+                    )
+                    # Mark as disconnected so reconnection logic can kick in
+                    self._connected = False
+                    # Fire a synthetic disconnect event for listeners
+                    self._fire_callbacks("_connection_lost", {"reason": str(e)})
+                    break
+
                 except Exception as e:
+                    # Check if socket is in error state
+                    if self._socket and self._socket.error is not None:
+                        self.logger.warning(
+                            f"Socket entered error state: {self._socket.error}",
+                            extra={"last_event": e}
+                        )
+                        self._connected = False
+                        self._fire_callbacks("_connection_lost", {"reason": str(self._socket.error)})
+                        break
+
                     self.logger.error(f"Error consuming socket event: {e}")
                     # Continue processing other events unless disconnected
                     if not self._connected:
                         break
 
         except asyncio.CancelledError:
-            pass
+            self.logger.debug("Consumer task cancelled")
         except Exception as e:
-            self.logger.error(f"Consumer task error: {e}")
+            self.logger.error(f"Consumer task error: {e}", exc_info=True)
         finally:
-            self.logger.debug("Event consumer task stopped")
+            if self._connected:
+                self.logger.warning("Consumer task exiting while still marked connected")
+                self._connected = False
+            self.logger.info("Event consumer task stopped")
 
     def _fire_callbacks(self, event_name: str, payload: dict) -> None:
         """Execute registered callbacks for an event.

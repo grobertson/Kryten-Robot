@@ -1,10 +1,11 @@
-"""Audit logging for admin, playlist, chat, and command operations.
+"""Audit logging for admin, playlist, chat, command, and connection operations.
 
 This module provides specialized loggers for tracking CyTube operations:
 - Admin operations (rank changes, bans, filters, emotes, etc.)
 - Playlist operations (queue, delete, move, shuffle, etc.)
 - Chat messages (timestamped chat log)
 - Command audit (all received commands with username and arguments)
+- Connection events (connect, disconnect, reconnect, errors)
 
 All logs are written in UTF-8 encoding.
 """
@@ -23,6 +24,7 @@ class AuditLogger:
     - Playlist operations
     - Chat messages
     - Command audit
+    - Connection events
 
     All log files are UTF-8 encoded and use append mode.
     """
@@ -37,6 +39,7 @@ class AuditLogger:
                 - playlist_operations
                 - chat_messages
                 - command_audit
+                - connection_events (optional)
         """
         self.base_path = Path(base_path)
         self.filenames = filenames
@@ -49,6 +52,11 @@ class AuditLogger:
         self.playlist_logger = self._create_logger("playlist", filenames["playlist_operations"])
         self.chat_logger = self._create_logger("chat", filenames["chat_messages"])
         self.command_logger = self._create_logger("command", filenames["command_audit"])
+
+        # Connection logger is optional for backward compatibility
+        self.connection_logger: logging.Logger | None = None
+        if "connection_events" in filenames:
+            self.connection_logger = self._create_logger("connection", filenames["connection_events"])
 
     def _create_logger(self, name: str, filename: str) -> logging.Logger:
         """Create a specialized logger with file handler.
@@ -210,6 +218,40 @@ class AuditLogger:
 
         message = " ".join(parts)
         self.command_logger.info(message)
+
+    def log_connection_event(
+        self,
+        event: str,
+        target: str | None = None,
+        details: dict[str, Any] | None = None,
+        error: str | None = None
+    ) -> None:
+        """Log a connection event.
+
+        Args:
+            event: Event type (e.g., "connect", "disconnect", "reconnect", "error").
+            target: Connection target (e.g., "CyTube", "NATS").
+            details: Additional event details (domain, channel, etc.).
+            error: Error message if applicable.
+
+        Example:
+            >>> audit.log_connection_event("disconnect", "CyTube", error="Connection reset by peer")
+            >>> audit.log_connection_event("reconnect", "CyTube", {"domain": "cytu.be", "channel": "test"})
+        """
+        if self.connection_logger is None:
+            return
+
+        parts = [f"[{event.upper()}]"]
+        if target:
+            parts.append(f"target={target}")
+        if details:
+            detail_str = " ".join(f"{k}={v}" for k, v in details.items())
+            parts.append(detail_str)
+        if error:
+            parts.append(f"error=\"{error}\"")
+
+        message = " ".join(parts)
+        self.connection_logger.info(message)
 
 
 def create_audit_logger(base_path: str, filenames: dict[str, str]) -> AuditLogger:

@@ -2,7 +2,8 @@
   "cytube": {"domain": "cytu.be",
             "channel": "420grindhouse",
             "user": "CynthiaRothbot",
-            "password": "76wggGpQx$xMyE8"
+            "password": "76wggGpQx$xMyE8",
+            "aggressive_reconnect": true
   },
   "nats": {"servers": ["nats://localhost:4222"],
                         "user": null,
@@ -25,7 +26,8 @@
     "admin_operations": "admin-operations.log",
     "playlist_operations": "playlist-operations.log",
     "chat_messages": "chat-messages.log",
-    "command_audit": "command-audit.log"
+    "command_audit": "command-audit.log",
+    "connection_events": "connection-events.log"
   },
   "log_level": "DEBUG"
   

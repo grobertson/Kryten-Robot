@@ -119,6 +119,7 @@ class LoggingConfig:
         playlist_operations: Filename for playlist operations log. Default: "playlist-operations.log".
         chat_messages: Filename for chat message log. Default: "chat-messages.log".
         command_audit: Filename for command audit log. Default: "command-audit.log".
+        connection_events: Filename for connection event log. Default: "connection-events.log".
 
     Examples:
         >>> cfg = LoggingConfig(base_path="/var/log/kryten")
@@ -131,6 +132,7 @@ class LoggingConfig:
     playlist_operations: str = "playlist-operations.log"
     chat_messages: str = "chat-messages.log"
     command_audit: str = "command-audit.log"
+    connection_events: str = "connection-events.log"
 
 
 @dataclass
