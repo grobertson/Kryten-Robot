@@ -4,7 +4,7 @@ This package provides a standalone Socket.IO client that connects to CyTube
 chat servers and publishes events to NATS for consumption by Rosey-Robot plugins.
 """
 
-__version__ = "0.6.10"
+__version__ = "0.6.11"
 __author__ = "Kryten Robot Team"
 __license__ = "MIT"
 
