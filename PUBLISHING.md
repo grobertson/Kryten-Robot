@@ -76,7 +76,7 @@ rm -rf dist build *.egg-info
 ### 3. Build Package
 
 ```bash
-poetry build
+uv build
 ```
 
 This creates:
@@ -113,7 +113,7 @@ poetry config repositories.testpypi https://test.pypi.org/legacy/
 poetry config pypi-token.testpypi YOUR-TEST-TOKEN-HERE
 
 # Upload to TestPyPI
-poetry publish -r testpypi
+uv publish -r testpypi
 
 # Test installation from TestPyPI
 pip install --index-url https://test.pypi.org/simple/ kryten-robot
@@ -124,13 +124,13 @@ pip install --index-url https://test.pypi.org/simple/ kryten-robot
 Once tested, upload to production PyPI:
 
 ```bash
-poetry publish
+uv publish
 ```
 
 Or build and publish in one command:
 
 ```bash
-poetry publish --build
+uv publish --build
 ```
 
 ## Verify Publication
@@ -167,7 +167,7 @@ For subsequent releases:
    ```
 4. Build and publish:
    ```bash
-   poetry publish --build
+   uv publish --build
    ```
 
 ## Automation with GitHub Actions
@@ -197,12 +197,12 @@ jobs:
           pip install poetry
       
       - name: Build package
-        run: poetry build
+        run: uv build
       
       - name: Publish to PyPI
         env:
           POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
-        run: poetry publish
+        run: uv publish
 ```
 
 Store PyPI token in GitHub repository secrets as `PYPI_TOKEN`.
@@ -220,7 +220,7 @@ echo "0.5.1" > VERSION
 
 Verify package structure:
 ```bash
-poetry build
+uv build
 tar -tzf dist/kryten-robot-0.5.0.tar.gz | grep __init__.py
 ```
 
@@ -251,7 +251,7 @@ Before publishing:
 - [ ] Linting clean (`ruff check kryten/`)
 - [ ] Type checking clean (`mypy kryten/`)
 - [ ] Git committed and tagged
-- [ ] Built successfully (`poetry build`)
+- [ ] Built successfully (`uv build`)
 - [ ] Tested local install
 - [ ] Tested on TestPyPI (optional but recommended)
 
@@ -275,9 +275,9 @@ twine upload dist/*
 ```bash
 # Complete release workflow
 echo "0.5.0" > VERSION
-poetry build
-poetry publish --dry-run  # Preview
-poetry publish            # Actual upload
+uv build
+uv publish --dry-run  # Preview
+uv publish            # Actual upload
 
 # Upgrade kryten-robot everywhere
 pip install --upgrade kryten-robot

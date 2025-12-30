@@ -86,7 +86,7 @@ pip install -e .
 ### With Poetry
 
 ```bash
-poetry add kryten-robot
+uv add kryten-robot
 ```
 
 ## Quick Start
