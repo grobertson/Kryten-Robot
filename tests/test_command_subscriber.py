@@ -50,7 +50,7 @@ def mock_logger():
 @pytest.fixture
 def subscriber(mock_sender, mock_nats, mock_logger):
     """Create a CommandSubscriber with mocked dependencies."""
-    return CommandSubscriber(mock_sender, mock_nats, mock_logger, "testchannel")
+    return CommandSubscriber(mock_sender, mock_nats, mock_logger, "testdomain", "testchannel")
 
 
 class TestInitialization:
@@ -58,7 +58,7 @@ class TestInitialization:
 
     def test_init(self, mock_sender, mock_nats, mock_logger):
         """Test basic initialization."""
-        sub = CommandSubscriber(mock_sender, mock_nats, mock_logger, "mychannel")
+        sub = CommandSubscriber(mock_sender, mock_nats, mock_logger, "mydomain", "mychannel")
         
         assert sub._sender == mock_sender
         assert sub._nats == mock_nats
@@ -78,7 +78,7 @@ class TestStartStop:
         
         assert subscriber._running is True
         mock_nats.subscribe.assert_called_once_with(
-            "cytube.commands.testchannel.>",
+            "kryten.commands.cytube.testchannel.>",
             subscriber._handle_command
         )
 
@@ -145,7 +145,7 @@ class TestCommandRouting:
         }
         data = json.dumps(command).encode()
         
-        await subscriber._handle_command("cytube.commands.testchannel.queue", data)
+        await subscriber._handle_command("kryten.commands.cytube.testchannel.queue", data)
         
         mock_sender.add_video.assert_called_once_with(
             url="yt:test123", position="next", temp=True

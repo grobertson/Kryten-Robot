@@ -10,7 +10,7 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .nats_client import NatsClient
@@ -28,6 +28,10 @@ class ServiceInfo:
         last_heartbeat: Timestamp of most recent heartbeat
         last_startup: Timestamp of most recent startup event
         heartbeat_count: Total number of heartbeats received
+        health_port: Port for health endpoint (if configured)
+        health_path: Path for health endpoint (default /health)
+        metrics_port: Port for metrics endpoint (if configured)
+        metrics_path: Path for metrics endpoint (default /metrics)
         metadata: Additional service-specific metadata
     """
     name: str
@@ -37,17 +41,35 @@ class ServiceInfo:
     last_heartbeat: datetime
     last_startup: datetime
     heartbeat_count: int = 0
+    health_port: int | None = None
+    health_path: str = "/health"
+    metrics_port: int | None = None
+    metrics_path: str = "/metrics"
     metadata: dict[str, Any] = field(default_factory=dict)
     
     @property
     def seconds_since_heartbeat(self) -> float:
         """Calculate seconds since last heartbeat."""
-        return (datetime.now(UTC) - self.last_heartbeat).total_seconds()
+        return (datetime.now(timezone.utc) - self.last_heartbeat).total_seconds()
     
     @property
     def is_stale(self) -> bool:
         """Check if service appears offline (no heartbeat in 90 seconds)."""
         return self.seconds_since_heartbeat > 90
+    
+    @property
+    def health_url(self) -> str | None:
+        """Get full health endpoint URL if configured."""
+        if self.health_port:
+            return f"http://{self.hostname}:{self.health_port}{self.health_path}"
+        return None
+    
+    @property
+    def metrics_url(self) -> str | None:
+        """Get full metrics endpoint URL if configured."""
+        if self.metrics_port:
+            return f"http://{self.hostname}:{self.metrics_port}{self.metrics_path}"
+        return None
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -61,6 +83,12 @@ class ServiceInfo:
             "heartbeat_count": self.heartbeat_count,
             "seconds_since_heartbeat": self.seconds_since_heartbeat,
             "is_stale": self.is_stale,
+            "health_port": self.health_port,
+            "health_path": self.health_path,
+            "health_url": self.health_url,
+            "metrics_port": self.metrics_port,
+            "metrics_path": self.metrics_path,
+            "metrics_url": self.metrics_url,
             "metadata": self.metadata,
         }
 
@@ -126,6 +154,33 @@ class ServiceRegistry:
     def service_count(self) -> int:
         """Get count of registered services."""
         return len(self._services)
+    
+    def get_all_services(self) -> list[ServiceInfo]:
+        """Get list of all registered services.
+        
+        Returns:
+            List of ServiceInfo objects for all registered services.
+        """
+        return list(self._services.values())
+    
+    def get_service(self, name: str) -> ServiceInfo | None:
+        """Get a specific service by name.
+        
+        Args:
+            name: Service name to look up
+            
+        Returns:
+            ServiceInfo if found, None otherwise.
+        """
+        return self._services.get(name)
+    
+    def get_active_services(self) -> list[ServiceInfo]:
+        """Get list of active (non-stale) services.
+        
+        Returns:
+            List of ServiceInfo objects for services with recent heartbeats.
+        """
+        return [s for s in self._services.values() if not s.is_stale]
     
     def on_service_registered(self, callback: Callable[[ServiceInfo], None]) -> None:
         """Register callback for when new service is discovered.
@@ -221,7 +276,18 @@ class ServiceRegistry:
             # Extract service information
             version = data.get("version", "unknown")
             hostname = data.get("hostname", "unknown")
-            timestamp = datetime.fromisoformat(data.get("timestamp", datetime.now(UTC).isoformat()))
+            timestamp = datetime.fromisoformat(data.get("timestamp", datetime.now(timezone.utc).isoformat()))
+            
+            # Extract endpoint information from metadata
+            metadata = data.get("metadata", {})
+            endpoints = metadata.get("endpoints", {})
+            health_info = endpoints.get("health", {})
+            metrics_info = endpoints.get("metrics", {})
+            
+            health_port = health_info.get("port")
+            health_path = health_info.get("path", "/health")
+            metrics_port = metrics_info.get("port")
+            metrics_path = metrics_info.get("path", "/metrics")
             
             async with self._lock:
                 is_new = service_name not in self._services
@@ -235,12 +301,21 @@ class ServiceRegistry:
                         first_seen=timestamp,
                         last_heartbeat=timestamp,
                         last_startup=timestamp,
+                        health_port=health_port,
+                        health_path=health_path,
+                        metrics_port=metrics_port,
+                        metrics_path=metrics_path,
                         metadata=data,
                     )
                     self._services[service_name] = service_info
-                    self._logger.info(
-                        f"Service registered: {service_name} v{version} on {hostname}"
-                    )
+                    
+                    # Enhanced logging for new service
+                    log_parts = [f"Service registered: {service_name} v{version} on {hostname}"]
+                    if health_port:
+                        log_parts.append(f"health=:{health_port}{health_path}")
+                    if metrics_port:
+                        log_parts.append(f"metrics=:{metrics_port}{metrics_path}")
+                    self._logger.info(" | ".join(log_parts))
                     
                     # Trigger callback
                     if self._on_service_registered:
@@ -255,10 +330,19 @@ class ServiceRegistry:
                     service_info.hostname = hostname
                     service_info.last_startup = timestamp
                     service_info.last_heartbeat = timestamp
+                    service_info.health_port = health_port
+                    service_info.health_path = health_path
+                    service_info.metrics_port = metrics_port
+                    service_info.metrics_path = metrics_path
                     service_info.metadata = data
-                    self._logger.info(
-                        f"Service restarted: {service_name} v{version} on {hostname}"
-                    )
+                    
+                    # Enhanced logging for restarted service
+                    log_parts = [f"Service restarted: {service_name} v{version} on {hostname}"]
+                    if health_port:
+                        log_parts.append(f"health=:{health_port}{health_path}")
+                    if metrics_port:
+                        log_parts.append(f"metrics=:{metrics_port}{metrics_path}")
+                    self._logger.info(" | ".join(log_parts))
         
         except json.JSONDecodeError as e:
             self._logger.error(f"Invalid startup event JSON: {e}")
@@ -274,7 +358,7 @@ class ServiceRegistry:
             if not service_name:
                 return
             
-            timestamp = datetime.fromisoformat(data.get("timestamp", datetime.now(UTC).isoformat()))
+            timestamp = datetime.fromisoformat(data.get("timestamp", datetime.now(timezone.utc).isoformat()))
             
             async with self._lock:
                 if service_name in self._services:

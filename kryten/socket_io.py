@@ -546,7 +546,8 @@ class SocketIO:
                 self.logger.info("response cancelled for %s", event)
                 raise
 
-            except TimeoutError:
+            except (TimeoutError, asyncio.TimeoutError):
+                # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
                 self.logger.info("response timeout for %s", event)
                 response.cancel()
                 return None
@@ -602,7 +603,8 @@ class SocketIO:
         except asyncio.CancelledError:
             self.logger.debug("ping task cancelled")
 
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
+            # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
             self.logger.error("ping timeout")
             self.error = PingTimeout()
 

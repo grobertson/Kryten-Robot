@@ -40,7 +40,7 @@ import logging.config
 import logging.handlers
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from .correlation import CorrelationFilter
 
@@ -140,7 +140,7 @@ class JSONFormatter(logging.Formatter):
         component = record.name.split(".")[-1] if "." in record.name else record.name
 
         log_data = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -185,7 +185,7 @@ class TextFormatter(logging.Formatter):
         component = record.name.split(".")[-1] if "." in record.name else record.name
 
         # Format timestamp
-        timestamp = datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         # Get correlation ID
         correlation_id = getattr(record, "correlation_id", "N/A")

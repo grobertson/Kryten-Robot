@@ -12,7 +12,7 @@ restarts across the service group.
 import json
 import logging
 import socket
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .nats_client import NatsClient
@@ -84,7 +84,7 @@ class LifecycleEventPublisher:
             return
 
         self._running = True
-        self._start_time = datetime.now(UTC)
+        self._start_time = datetime.now(timezone.utc)
 
         # Subscribe to groupwide restart notices
         try:
@@ -150,13 +150,13 @@ class LifecycleEventPublisher:
         """Build base event payload with common metadata."""
         uptime = None
         if self._start_time:
-            uptime = (datetime.now(UTC) - self._start_time).total_seconds()
+            uptime = (datetime.now(timezone.utc) - self._start_time).total_seconds()
 
         return {
             "service": self._service_name,
             "version": self._version,
             "hostname": self._hostname,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "uptime_seconds": uptime,
         }
 
@@ -256,7 +256,7 @@ class LifecycleEventPublisher:
             "initiator": initiator or self._service_name,
             "reason": reason,
             "delay_seconds": delay_seconds,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         payload.update(extra_data)
 

@@ -117,12 +117,12 @@ class TestPlaylistMethods:
     @pytest.mark.asyncio
     async def test_delete_video(self, sender, mock_connector):
         """Test deleting a video from playlist."""
-        result = await sender.delete_video("video-uid-123")
+        result = await sender.delete_video("123")
         
         assert result is True
         mock_connector._socket.emit.assert_called_once_with(
             "delete",
-            {"uid": "video-uid-123"}
+            123
         )
 
     @pytest.mark.asyncio
@@ -139,12 +139,12 @@ class TestPlaylistMethods:
     @pytest.mark.asyncio
     async def test_jump_to(self, sender, mock_connector):
         """Test jumping to a specific video."""
-        result = await sender.jump_to("video-uid-789")
+        result = await sender.jump_to("789")
         
         assert result is True
         mock_connector._socket.emit.assert_called_once_with(
             "jumpTo",
-            {"uid": "video-uid-789"}
+            789
         )
 
     @pytest.mark.asyncio

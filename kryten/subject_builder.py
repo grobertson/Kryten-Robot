@@ -194,52 +194,35 @@ def build_event_subject(event: RawEvent) -> str:
     return build_subject(event.domain, event.channel, event.event_name)
 
 
-def build_command_subject(domain: str, channel: str, action: str) -> str:
-    """Build NATS subject for commands.
+def build_command_subject(service: str, domain: str = "", channel: str = "", action: str = "") -> str:
+    """Build NATS subject for sending commands.
 
     Constructs hierarchical subject following the format:
-    kryten.commands.cytube.{channel}.{action}
-
-    All components are aggressively normalized (lowercase, dots removed).
+    kryten.{service}.command
 
     Args:
-        domain: Domain name (e.g., "cytu.be", "cy.tube").
-        channel: Channel name (e.g., "420Grindhouse").
-        action: Command action (e.g., "chat", "queue").
+        service: Target service (e.g., 'robot', 'llm', 'playlist').
+        domain: (Legacy/Optional) Domain name (ignored for new style).
+        channel: (Legacy/Optional) Channel name (ignored for new style).
+        action: (Legacy/Optional) Command action (ignored for new style).
 
     Returns:
-        Formatted NATS subject string.
+        Formatted NATS subject string (e.g., 'kryten.robot.command').
 
     Raises:
-        ValueError: If any component is empty after normalization.
+        ValueError: If service is empty.
 
     Examples:
-        >>> build_command_subject("cytu.be", "lounge", "chat")
-        'kryten.commands.cytube.lounge.chat'
-        >>> build_command_subject("cy.tube", "420Grindhouse", "chat")
-        'kryten.commands.cytube.420grindhouse.chat'
-        >>> build_command_subject("Cytu.be", "Test Channel", "queue")
-        'kryten.commands.cytube.test-channel.queue'
+        >>> build_command_subject("robot")
+        'kryten.robot.command'
     """
-    # Normalize all components (domain dots removed, everything lowercase)
-    normalize_token(domain)
-    channel_clean = normalize_token(channel)
-    action_clean = normalize_token(action)
+    if not service:
+        raise ValueError("Service cannot be empty")
 
-    # Validate components are not empty
-    if not channel_clean:
-        raise ValueError("Channel cannot be empty after normalization")
-    if not action_clean:
-        raise ValueError("Action cannot be empty after normalization")
-
-    # Build subject with "cytube" as literal platform name (domain normalized out)
-    subject = f"{COMMAND_PREFIX}.cytube.{channel_clean}.{action_clean}"
-
-    # Final validation
-    if len(subject) > 255:
-        raise ValueError(f"Subject exceeds NATS limit of 255 characters: {len(subject)}")
-
-    return subject
+    service_clean = normalize_token(service)
+    
+    # New style: kryten.{service}.command
+    return f"kryten.{service_clean}.command"
 
 
 def parse_subject(subject: str) -> dict[str, str]:

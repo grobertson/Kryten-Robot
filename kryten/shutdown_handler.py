@@ -182,7 +182,8 @@ class ShutdownHandler:
             result = await asyncio.wait_for(self._shutdown_task, timeout=self._timeout)
             self._shutdown_result = result
             return result
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
+            # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
             self._logger.critical(
                 "Shutdown timeout exceeded - forcing termination",
                 extra={"timeout": self._timeout, "phase": self._phase.value}
@@ -227,7 +228,7 @@ class ShutdownHandler:
                     timeout=self._component_timeout
                 )
                 self._logger.info("Event publisher stopped cleanly")
-            except TimeoutError:
+            except (TimeoutError, asyncio.TimeoutError):
                 error = f"Publisher stop timeout ({self._component_timeout}s)"
                 self._logger.warning(error)
                 errors.append(error)
@@ -250,7 +251,7 @@ class ShutdownHandler:
                     timeout=self._component_timeout
                 )
                 self._logger.info("CyTube connector disconnected cleanly")
-            except TimeoutError:
+            except (TimeoutError, asyncio.TimeoutError):
                 error = f"Connector disconnect timeout ({self._component_timeout}s)"
                 self._logger.warning(error)
                 errors.append(error)
@@ -267,7 +268,7 @@ class ShutdownHandler:
                     timeout=self._component_timeout
                 )
                 self._logger.info("NATS client disconnected cleanly")
-            except TimeoutError:
+            except (TimeoutError, asyncio.TimeoutError):
                 error = f"NATS disconnect timeout ({self._component_timeout}s)"
                 self._logger.warning(error)
                 errors.append(error)

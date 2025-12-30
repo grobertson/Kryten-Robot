@@ -289,6 +289,7 @@ class EventPublisher:
             self.logger.error(
                 f"Publisher failed with error: {e}",
                 extra={"error": str(e), "type": type(e).__name__},
+                exc_info=True,
             )
             raise
 

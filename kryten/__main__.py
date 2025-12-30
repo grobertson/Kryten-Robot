@@ -21,6 +21,7 @@ Exit Codes:
 
 import argparse
 import asyncio
+import json
 import logging
 import signal
 import sys
@@ -127,6 +128,7 @@ async def main(config_path: str) -> int:
     cmd_subscriber: CommandSubscriber | None = None
     health_monitor: HealthMonitor | None = None
     watchdog: ConnectionWatchdog | None = None
+    robot_cmd_handler = None  # RobotCommandHandler for system.ping etc
     app_state: ApplicationState | None = None  # Created after config load
 
     def signal_handler(signum: int, frame) -> None:
@@ -313,7 +315,7 @@ async def main(config_path: str) -> int:
                             uid = payload.get("uid")
                             if uid:
                                 await state_manager.remove_playlist_item(uid)
-                        elif event_name == "moveMedia":
+                        elif event_name == "moveVideo":
                             from_uid = payload.get("from")
                             after = payload.get("after")
                             if from_uid:
@@ -332,6 +334,9 @@ async def main(config_path: str) -> int:
                             rank = payload.get("rank")
                             if name is not None:
                                 await state_manager.update_user({"name": name, "rank": rank})
+                        elif event_name == "changeMedia":
+                            # Currently playing media changed
+                            await state_manager.update_current_media(payload)
                     except Exception as e:
                         logger.error(f"Error handling state event {event_name}: {e}", exc_info=True)
 
@@ -340,8 +345,8 @@ async def main(config_path: str) -> int:
 
             # Register state callbacks for relevant events
             state_events = [
-                "emoteList", "playlist", "queue", "delete", "moveMedia",
-                "userlist", "addUser", "userLeave", "setUserRank"
+                "emoteList", "playlist", "queue", "delete", "moveVideo",
+                "userlist", "addUser", "userLeave", "setUserRank", "changeMedia"
             ]
             for event in state_events:
                 connector.on_event(event, handle_state_event)
@@ -652,6 +657,21 @@ async def main(config_path: str) -> int:
         else:
             logger.info("Health monitoring disabled in configuration")
 
+        # Start robot command handler for system.ping etc
+        from .robot_command_handler import RobotCommandHandler
+        robot_cmd_handler = RobotCommandHandler(
+            nats_client=nats_client,
+            logger=logger,
+            version=__version__,
+            config=config,
+            connector=connector,
+            publisher=publisher,
+            cmd_subscriber=cmd_subscriber,
+            sender=sender,
+        )
+        await robot_cmd_handler.start()
+        logger.info("Robot command handler started (kryten.robot.command)")
+
         # REQ-009: Log ready message
         logger.info("=" * 60)
         logger.info("Kryten is ready and processing events")
@@ -706,6 +726,15 @@ async def main(config_path: str) -> int:
                 logger.info("Health monitor stopped")
             except Exception as e:
                 logger.error(f"Error stopping health monitor: {e}")
+
+        # 1b. Stop robot command handler
+        if robot_cmd_handler:
+            logger.info("Stopping robot command handler")
+            try:
+                await robot_cmd_handler.stop()
+                logger.info("Robot command handler stopped")
+            except Exception as e:
+                logger.error(f"Error stopping robot command handler: {e}")
 
         # 2. Stop service registry
         if service_registry:
@@ -763,7 +792,8 @@ async def main(config_path: str) -> int:
                 try:
                     await asyncio.wait_for(publisher_task, timeout=5.0)
                     logger.info("Event publisher stopped")
-                except TimeoutError:
+                except (TimeoutError, asyncio.TimeoutError):
+                    # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
                     logger.warning("Event publisher did not stop within timeout, cancelling")
                     publisher_task.cancel()
                     try:

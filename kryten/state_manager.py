@@ -9,9 +9,9 @@ import json
 import logging
 from typing import Any
 
-from nats.errors import NoRespondersError
+from nats.errors import NoRespondersError, TimeoutError as NatsTimeoutError
 from nats.js import api
-from nats.js.errors import ServiceUnavailableError
+from nats.js.errors import ServerError, ServiceUnavailableError
 from nats.js.kv import KeyValue
 
 from .nats_client import NatsClient
@@ -68,6 +68,7 @@ class StateManager:
         self._emotes: list[dict[str, Any]] = []
         self._playlist: list[dict[str, Any]] = []
         self._users: dict[str, dict[str, Any]] = {}  # username -> user data
+        self._current_media: dict[str, Any] | None = None  # Currently playing media
 
     @property
     def is_running(self) -> bool:
@@ -269,6 +270,29 @@ class StateManager:
                 "Run 'nats-server -js' or configure JetStream in nats-server.conf"
             ) from e
 
+        except ServerError as e:
+            # Handle JetStream server errors (e.g., stream offline, err_code=10118)
+            self._logger.error(
+                f"JetStream server error: {e}. "
+                "This typically means the JetStream streams are offline or corrupted. "
+                "Try restarting the NATS server or check the JetStream data directory."
+            )
+            raise RuntimeError(
+                f"JetStream server error: {e}. "
+                "Ensure NATS server has JetStream enabled and streams are healthy. "
+                "You may need to restart the NATS server or clear corrupt stream data."
+            ) from e
+
+        except NatsTimeoutError as e:
+            self._logger.error(
+                "Timeout waiting for JetStream response. "
+                "This may indicate JetStream is not enabled or the server is overloaded."
+            )
+            raise RuntimeError(
+                "Timeout waiting for JetStream. Ensure NATS server is running with "
+                "JetStream enabled ('nats-server -js') and is responsive."
+            ) from e
+
         except Exception as e:
             self._logger.error(f"Failed to start state manager: {e}", exc_info=True)
             raise
@@ -376,8 +400,9 @@ class StateManager:
                 self._playlist.append(item)
             else:
                 # Insert after specified UID
+                after_str = str(after)
                 for i, existing in enumerate(self._playlist):
-                    if existing.get("uid") == after:
+                    if str(existing.get("uid")) == after_str:
                         self._playlist.insert(i + 1, item)
                         break
                 else:
@@ -408,7 +433,8 @@ class StateManager:
             return
 
         try:
-            self._playlist = [item for item in self._playlist if item.get("uid") != uid]
+            uid_str = str(uid)
+            self._playlist = [item for item in self._playlist if str(item.get("uid")) != uid_str]
 
             # Update KV store
             playlist_json = json.dumps(self._playlist).encode()
@@ -437,8 +463,9 @@ class StateManager:
         try:
             # Find and remove item
             item = None
+            uid_str = str(uid)
             for i, existing in enumerate(self._playlist):
-                if existing.get("uid") == uid:
+                if str(existing.get("uid")) == uid_str:
                     item = self._playlist.pop(i)
                     break
 
@@ -453,8 +480,9 @@ class StateManager:
                 self._playlist.append(item)
             else:
                 # Insert after specified UID
+                after_str = str(after)
                 for i, existing in enumerate(self._playlist):
-                    if existing.get("uid") == after:
+                    if str(existing.get("uid")) == after_str:
                         self._playlist.insert(i + 1, item)
                         break
                 else:
@@ -489,6 +517,52 @@ class StateManager:
 
         except Exception as e:
             self._logger.error(f"Failed to clear playlist: {e}", exc_info=True)
+
+    # ========================================================================
+    # Current Media Management
+    # ========================================================================
+
+    async def update_current_media(self, media_data: dict[str, Any]) -> None:
+        """Update currently playing media.
+
+        Called when 'changeMedia' event received from CyTube.
+
+        Args:
+            media_data: Media data dict with 'id', 'title', 'seconds', 'type', etc.
+
+        Examples:
+            >>> media = {"id": "xyz", "title": "Movie", "seconds": 3600, "type": "yt"}
+            >>> await manager.update_current_media(media)
+        """
+        if not self._running:
+            self._logger.warning("Cannot update current media: state manager not running")
+            return
+
+        try:
+            self._current_media = media_data
+
+            # Store as JSON in playlist bucket with 'current' key
+            media_json = json.dumps(media_data).encode()
+            await self._kv_playlist.put("current", media_json)
+
+            title = media_data.get("title", "Unknown")[:60]
+            self._logger.info(f"Updated current media: {title}")
+
+        except Exception as e:
+            self._logger.error(f"Failed to update current media: {e}", exc_info=True)
+
+    def get_current_media(self) -> dict[str, Any] | None:
+        """Get currently playing media.
+
+        Returns:
+            Media data dict or None if nothing playing.
+
+        Examples:
+            >>> media = manager.get_current_media()
+            >>> if media:
+            ...     print(f"Playing: {media.get('title')}")
+        """
+        return self._current_media
 
     # ========================================================================
     # Userlist Management
@@ -697,12 +771,13 @@ class StateManager:
         """Get all channel state.
 
         Returns:
-            Dictionary with emotes, playlist, and userlist.
+            Dictionary with emotes, playlist, userlist, and current_media.
         """
         return {
             "emotes": self.get_emotes(),
             "playlist": self.get_playlist(),
-            "userlist": self.get_userlist()
+            "userlist": self.get_userlist(),
+            "current_media": self.get_current_media(),
         }
 
 

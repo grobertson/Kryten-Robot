@@ -119,6 +119,8 @@ class CommandSubscriber:
         from .subject_builder import normalize_token
 
         # Subscribe to all commands for this channel (domain normalized out)
+        # Note: We are keeping this for backward compatibility or channel-scoped commands
+        # The new 'kryten.command.robot' is handled by RobotCommandHandler
         channel_normalized = normalize_token(self._channel)
         subject = f"kryten.commands.cytube.{channel_normalized}.>"
         self._subscription = await self._nats.subscribe(subject, self._handle_command)

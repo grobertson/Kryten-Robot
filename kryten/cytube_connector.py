@@ -131,6 +131,21 @@ class CytubeConnector:
             'events_processed': self._events_processed,
         }
 
+    async def emit(self, event: str, data: dict[str, Any]) -> None:
+        """Emit an event to CyTube.
+
+        Args:
+            event: Event name.
+            data: Event payload.
+
+        Raises:
+            NotConnectedError: If socket is not connected.
+        """
+        if not self._socket:
+            raise NotConnectedError("Socket not connected")
+            
+        await self._socket.emit(event, data)
+
     async def connect(self) -> None:
         """Establish connection and authenticate with CyTube.
 
@@ -355,7 +370,8 @@ class CytubeConnector:
                     f"Invalid or missing password for channel: {self.config.channel}"
                 )
 
-        except TimeoutError:
+        except (TimeoutError, asyncio.TimeoutError):
+            # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
             # No immediate rejection means join was accepted
             pass
 
@@ -765,7 +781,9 @@ class CytubeConnector:
                     self._events_processed += 1
                     yield event_name, payload
 
-                except TimeoutError:
+                except (TimeoutError, asyncio.TimeoutError):
+                    # Python 3.10 compatibility: asyncio.TimeoutError is separate from TimeoutError
+                    # In Python 3.11+, they are the same, but we need to catch both for 3.10
                     # No event received, check if still connected
                     if not self._connected:
                         break
@@ -775,7 +793,7 @@ class CytubeConnector:
             self.logger.debug("Event iteration cancelled")
             raise
         except Exception as e:
-            self.logger.error(f"Error in event iteration: {e}")
+            self.logger.error(f"Error in event iteration: {e}", exc_info=True)
             raise ConnectionError(f"Event stream error: {e}") from e
         finally:
             self.logger.debug("Event iteration stopped")

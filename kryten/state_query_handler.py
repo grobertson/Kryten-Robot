@@ -10,7 +10,7 @@ Commands are dispatched based on the 'command' field in the request.
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 try:
     import psutil
@@ -177,6 +177,7 @@ class StateQueryHandler:
                 "system.channels": self._handle_system_channels,
                 "system.version": self._handle_system_version,
                 "system.stats": self._handle_system_stats,
+                "system.services": self._handle_system_services,
                 "system.config": self._handle_system_config,
                 "system.ping": self._handle_system_ping,
                 "system.shutdown": self._handle_system_shutdown,
@@ -185,7 +186,8 @@ class StateQueryHandler:
 
             handler = handler_map.get(command)
             if not handler:
-                raise ValueError(f"Unknown command: {command}")
+                self._logger.debug(f"Ignoring unknown command: {command}")
+                return
 
             # Execute handler
             result = await handler(request)
@@ -337,11 +339,11 @@ class StateQueryHandler:
             last_time = pub_stats.get('last_event_time')
             last_type = pub_stats.get('last_event_type')
             events_stats = {
-                "published": pub_stats.get('events_published', 0),
+                "total_published": pub_stats.get('events_published', 0),
                 "failed": pub_stats.get('publish_errors', 0),
                 "rate_1min": pub_stats.get('rate_1min', 0.0),
                 "rate_5min": pub_stats.get('rate_5min', 0.0),
-                "last_event_time": datetime.fromtimestamp(last_time, tz=UTC).isoformat() if last_time else None,
+                "last_event_time": datetime.fromtimestamp(last_time, tz=timezone.utc).isoformat() if last_time else None,
                 "last_event_type": last_type
             }
 
@@ -352,11 +354,12 @@ class StateQueryHandler:
             last_time = cmd_stats.get('last_command_time')
             last_type = cmd_stats.get('last_command_type')
             commands_stats = {
-                "received": cmd_stats.get('commands_processed', 0),
-                "executed": cmd_stats.get('commands_succeeded', 0),
+                "total_received": cmd_stats.get('commands_processed', 0),
+                "succeeded": cmd_stats.get('commands_succeeded', 0),
                 "failed": cmd_stats.get('commands_failed', 0),
                 "rate_1min": cmd_stats.get('rate_1min', 0.0),
-                "last_command_time": datetime.fromtimestamp(last_time, tz=UTC).isoformat() if last_time else None,
+                "rate_5min": cmd_stats.get('rate_5min', 0.0),
+                "last_command_time": datetime.fromtimestamp(last_time, tz=timezone.utc).isoformat() if last_time else None,
                 "last_command_type": last_type
             }
 
@@ -371,27 +374,27 @@ class StateQueryHandler:
         connections_stats = {}
 
         # CyTube connection
-        cytube_stats = {"connected": False, "uptime_seconds": 0, "last_event_time": None, "reconnect_count": 0}
+        cytube_stats = {"connected": False, "connected_since": None, "last_event_time": None, "reconnect_count": 0}
         if self._app_state.connector:
             connector = self._app_state.connector
             connected_since = connector.connected_since
             last_event = connector.last_event_time
             cytube_stats = {
                 "connected": connector.is_connected,
-                "uptime_seconds": (datetime.now(UTC).timestamp() - connected_since) if connected_since else 0,
-                "last_event_time": datetime.fromtimestamp(last_event, tz=UTC).isoformat() if last_event else None,
+                "connected_since": datetime.fromtimestamp(connected_since, tz=timezone.utc).isoformat() if connected_since else None,
+                "last_event_time": datetime.fromtimestamp(last_event, tz=timezone.utc).isoformat() if last_event else None,
                 "reconnect_count": connector.reconnect_count
             }
 
         # NATS connection
-        nats_stats = {"connected": False, "uptime_seconds": 0, "server": None, "reconnect_count": 0}
+        nats_stats = {"connected": False, "connected_since": None, "connected_url": None, "reconnect_count": 0}
         if self._app_state.nats_client:
             nats = self._app_state.nats_client
             connected_since = nats.connected_since
             nats_stats = {
                 "connected": nats.is_connected,
-                "uptime_seconds": (datetime.now(UTC).timestamp() - connected_since) if connected_since else 0,
-                "server": nats.connected_url,
+                "connected_since": datetime.fromtimestamp(connected_since, tz=timezone.utc).isoformat() if connected_since else None,
+                "connected_url": nats.connected_url,
                 "reconnect_count": nats.reconnect_count
             }
 
@@ -405,9 +408,9 @@ class StateQueryHandler:
         if self._app_state.state_manager:
             sm = self._app_state.state_manager
             state_stats = {
-                "users_online": sm.users_count(),
-                "playlist_items": sm.playlist_count(),
-                "emotes_count": sm.emotes_count()
+                "users": sm.users_count(),
+                "playlist": sm.playlist_count(),
+                "emotes": sm.emotes_count()
             }
 
         # Get memory stats (if psutil available)
@@ -434,6 +437,55 @@ class StateQueryHandler:
             "connections": connections_stats,
             "state": state_stats,
             "memory": memory_stats
+        }
+
+    async def _handle_system_services(self, request: dict) -> dict:
+        """Get list of registered microservices.
+
+        Returns information about all microservices that have registered with
+        kryten-robot, including their version, hostname, health/metrics endpoints,
+        and heartbeat status.
+
+        Returns:
+            Dictionary containing:
+                - services: List of service dictionaries with:
+                    - name: Service name
+                    - version: Service version
+                    - hostname: Host running the service
+                    - first_seen: When service was first discovered
+                    - last_heartbeat: Most recent heartbeat timestamp
+                    - seconds_since_heartbeat: Seconds since last heartbeat
+                    - is_stale: True if no heartbeat in 90+ seconds
+                    - health_url: Full URL for health endpoint (if configured)
+                    - metrics_url: Full URL for metrics endpoint (if configured)
+                - count: Total number of registered services
+                - active_count: Number of non-stale services
+        """
+        if not self._app_state:
+            raise ValueError("ApplicationState not available for services")
+
+        if not self._app_state.service_registry:
+            return {"services": [], "count": 0, "active_count": 0}
+
+        registry = self._app_state.service_registry
+        services = registry.get_all_services()
+        
+        service_list = []
+        active_count = 0
+        
+        for service in services:
+            service_dict = service.to_dict()
+            service_list.append(service_dict)
+            if not service.is_stale:
+                active_count += 1
+        
+        # Sort by name for consistent ordering
+        service_list.sort(key=lambda s: s["name"])
+        
+        return {
+            "services": service_list,
+            "count": len(service_list),
+            "active_count": active_count
         }
 
     async def _handle_system_config(self, request: dict) -> dict:
@@ -498,7 +550,7 @@ class StateQueryHandler:
 
         return {
             "pong": True,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "uptime_seconds": uptime,
             "service": "robot",
             "version": __version__
@@ -544,8 +596,8 @@ class StateQueryHandler:
         reason = request.get('reason', 'Remote shutdown via system.shutdown')
 
         # Calculate shutdown time
-        shutdown_time = datetime.now(UTC).timestamp() + delay_seconds
-        shutdown_time_iso = datetime.fromtimestamp(shutdown_time, tz=UTC).isoformat()
+        shutdown_time = datetime.now(timezone.utc).timestamp() + delay_seconds
+        shutdown_time_iso = datetime.fromtimestamp(shutdown_time, tz=timezone.utc).isoformat()
 
         # Log the shutdown request
         self._logger.warning(

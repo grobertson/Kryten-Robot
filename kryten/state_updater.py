@@ -103,8 +103,8 @@ class StateUpdater:
             self._subscriptions.append(sub)
             self._logger.debug(f"Subscribed to {subject}")
 
-            subject = build_subject(self._domain, self._channel, "moveMedia")
-            sub = await self._nats._nc.subscribe(subject, cb=self._handle_move_media)
+            subject = build_subject(self._domain, self._channel, "moveVideo")
+            sub = await self._nats._nc.subscribe(subject, cb=self._handle_move_video)
             self._subscriptions.append(sub)
             self._logger.debug(f"Subscribed to {subject}")
 
@@ -223,25 +223,30 @@ class StateUpdater:
         except Exception as e:
             self._logger.error(f"Error handling delete event: {e}", exc_info=True)
 
-    async def _handle_move_media(self, msg) -> None:
-        """Handle 'moveMedia' event (video moved in playlist).
+    async def _handle_move_video(self, msg) -> None:
+        """Handle 'moveVideo' event (video moved in playlist).
 
         Args:
             msg: NATS message with move data.
         """
+        self._logger.info("DEBUG: _handle_move_video called")
         try:
             import json
             data = json.loads(msg.data.decode())
             payload = data.get("payload", {})
+            
+            self._logger.info(f"DEBUG: moveVideo payload: {payload}")
 
             from_uid = payload.get("from")
             after = payload.get("after")
 
             if from_uid is not None and after is not None:
                 await self._state.move_playlist_item(from_uid, after)
+            else:
+                self._logger.warning(f"DEBUG: Missing from/after in moveVideo: {payload}")
 
         except Exception as e:
-            self._logger.error(f"Error handling moveMedia event: {e}", exc_info=True)
+            self._logger.error(f"Error handling moveVideo event: {e}", exc_info=True)
 
     async def _handle_userlist(self, msg) -> None:
         """Handle 'userlist' event (initial user list load).

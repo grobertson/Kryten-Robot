@@ -1,11 +1,11 @@
 {
   "cytube": {"domain": "cytu.be",
-            "channel": "420grindhouse",
-            "user": "CynthiaRothbot",
-            "password": "76wggGpQx$xMyE8",
+            "channel": "AKWHR89327M",
+            "user": "SaveTheRobots",
+            "password": "wz6Kz.#2gXWw4B@",
             "aggressive_reconnect": true
   },
-  "nats": {"servers": ["nats://localhost:4222"],
+  "nats": {"servers": ["nats://kraken.local:4222"],
                         "user": null,
                         "password": null,
                         "connect_timeout": 10,
