@@ -39,23 +39,25 @@ jobs:
           fi
           echo "✅ Version format valid: $VERSION"
       
-      - name: Check VERSION file
+      - name: Check version in pyproject.toml
         run: |
-          if [ ! -f VERSION ]; then
-            echo "❌ VERSION file not found"
+          if [ ! -f pyproject.toml ]; then
+            echo "❌ pyproject.toml not found"
             exit 1
           fi
-          FILE_VERSION=$(cat VERSION)
+          # Extract version from pyproject.toml (e.g., version = "0.8.1")
+          FILE_VERSION=$(grep -m1 'version = "' pyproject.toml | cut -d '"' -f 2)
+          
           INPUT_VERSION="${{ inputs.version }}"
           INPUT_VERSION="${INPUT_VERSION#v}"  # Remove 'v' prefix
           
           if [ "$FILE_VERSION" != "$INPUT_VERSION" ]; then
             echo "❌ Version mismatch!"
-            echo "  VERSION file: $FILE_VERSION"
+            echo "  pyproject.toml version: $FILE_VERSION"
             echo "  Input version: $INPUT_VERSION"
             exit 1
           fi
-          echo "✅ VERSION file matches: $FILE_VERSION"
+          echo "✅ pyproject.toml version matches: $FILE_VERSION"
       
       - name: Verify tag exists
         run: |
