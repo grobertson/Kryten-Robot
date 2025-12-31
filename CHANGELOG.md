@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2025-12-30
+
+### Fixed
+- **CI/Linting Compliance**: Fixed 100+ mypy type errors, resolved ruff linting issues, and applied black formatting.
+- **Test Suite Stability**: Removed broken tests and organized manual scripts into `scripts/` directory.
+- **Health Monitor**: Fixed attribute error in health monitor server by introducing `KrytenHealthServer` class.
+
 ## [0.7.3] - 2025-12-28
 
 ### Fixed
