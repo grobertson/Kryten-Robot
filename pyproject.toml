@@ -1,6 +1,6 @@
 [project]
 name = "kryten-robot"
-version = "0.7.4"
+version = "0.7.5"
 description = "CyTube to NATS bridge connector - publishes CyTube events to NATS message bus"
 readme = "README.md"
 requires-python = ">=3.10,<4.0.0"

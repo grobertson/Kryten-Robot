@@ -83,7 +83,7 @@ def test_application_state():
         pass
 
     config = MockConfig()
-    app_state = ApplicationState("/path/to/config.json", config)
+    app_state = ApplicationState("/path/to/config.json", config)  # type: ignore
 
     print(f"  config_path: {app_state.config_path}")
     print(f"  config: {app_state.config}")

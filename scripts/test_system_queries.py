@@ -13,6 +13,7 @@ import asyncio
 import json
 import sys
 from datetime import datetime
+from typing import Any
 
 try:
     from nats.aio.client import Client as NATS
@@ -22,7 +23,7 @@ except ImportError:
     sys.exit(1)
 
 
-async def send_command(nc: NATS, command: str, **kwargs) -> dict:
+async def send_command(nc: NATS, command: str, **kwargs) -> dict[str, Any]:
     """Send a command via NATS request-reply and return the response.
 
     Args:
@@ -39,7 +40,7 @@ async def send_command(nc: NATS, command: str, **kwargs) -> dict:
 
     try:
         response = await nc.request(subject, json.dumps(request).encode(), timeout=5.0)
-        return json.loads(response.data.decode())
+        return json.loads(response.data.decode())  # type: ignore
     except TimeoutError:
         return {"error": "Timeout waiting for response", "success": False}
     except Exception as e:

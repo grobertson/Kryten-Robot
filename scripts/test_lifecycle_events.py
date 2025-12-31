@@ -110,6 +110,9 @@ class LifecycleMonitor:
 
     async def send_restart_notice(self, reason: str = "Manual test", delay: int = 5):
         """Send groupwide restart notice."""
+        if not self.nc:
+            return
+
         subject = "kryten.lifecycle.group.restart"
         payload = {
             "initiator": "test-script",
@@ -124,6 +127,9 @@ class LifecycleMonitor:
 
     async def stop(self):
         """Disconnect from NATS."""
+        if not self.nc:
+            return
+
         for sub in self.subscriptions:
             await sub.unsubscribe()
         await self.nc.close()
