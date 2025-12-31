@@ -8,7 +8,7 @@ from setuptools import find_packages, setup
 version = "0.0.0"
 pyproject_file = Path(__file__).parent / "pyproject.toml"
 if pyproject_file.exists():
-    with open(pyproject_file, "r", encoding="utf-8") as f:
+    with open(pyproject_file, encoding="utf-8") as f:
         for line in f:
             if line.strip().startswith("version ="):
                 version = line.split("=")[1].strip().strip('"')

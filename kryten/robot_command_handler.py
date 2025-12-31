@@ -498,9 +498,9 @@ class RobotCommandHandler:
 
         # Add metrics endpoint if health is enabled
         if self.config and self.config.health.enabled:
-            result["metrics_endpoint"] = (
-                f"http://{self.config.health.host}:{self.config.health.port}/health"
-            )
+            result[
+                "metrics_endpoint"
+            ] = f"http://{self.config.health.host}:{self.config.health.port}/health"
 
         # Add CyTube connection info
         if self.connector:
@@ -535,9 +535,9 @@ class RobotCommandHandler:
 
         # Metrics endpoint
         if self.config and self.config.health.enabled:
-            health["metrics_endpoint"] = (
-                f"http://{self.config.health.host}:{self.config.health.port}/health"
-            )
+            health[
+                "metrics_endpoint"
+            ] = f"http://{self.config.health.host}:{self.config.health.port}/health"
 
         return health
 
