@@ -211,10 +211,7 @@ Store PyPI token in GitHub repository secrets as `PYPI_TOKEN`.
 
 ### "File already exists" Error
 
-PyPI doesn't allow re-uploading the same version. Increment version number:
-```bash
-echo "0.5.1" > VERSION
-```
+PyPI doesn't allow re-uploading the same version. Increment version number in `pyproject.toml`.
 
 ### Import Errors After Installation
 

@@ -119,13 +119,13 @@ fi
 POETRY_VERSION=$(poetry --version)
 print_info "Poetry version: $POETRY_VERSION"
 
-# Read version from VERSION file
-if [ -f "VERSION" ]; then
-    VERSION=$(cat VERSION | tr -d '[:space:]')
+# Read version from pyproject.toml
+if [ -f "pyproject.toml" ]; then
+    VERSION=$(grep -m1 'version = "' pyproject.toml | cut -d '"' -f 2)
     print_info "Package version: $VERSION"
 else
-    print_warn "VERSION file not found, using version from pyproject.toml"
-    VERSION="unknown"
+    print_error "pyproject.toml not found"
+    exit 1
 fi
 
 # Clean build artifacts

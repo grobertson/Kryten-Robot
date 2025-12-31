@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - 'VERSION'
+      - 'pyproject.toml'
   workflow_dispatch:
 
 permissions:
@@ -23,10 +23,10 @@ jobs:
         with:
           fetch-depth: 0  # Full history for changelog
       
-      - name: Read VERSION file
+      - name: Read version from pyproject.toml
         id: version
         run: |
-          VERSION=$(cat VERSION)
+          VERSION=$(grep -m1 'version = "' pyproject.toml | cut -d '"' -f 2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$VERSION" >> $GITHUB_OUTPUT
           echo "📦 Version: $VERSION"

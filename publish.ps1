@@ -89,13 +89,13 @@ try {
     exit 1
 }
 
-# Read version from VERSION file
-if (Test-Path "VERSION") {
-    $version = (Get-Content "VERSION").Trim()
+# Read version from pyproject.toml
+if (Test-Path "pyproject.toml") {
+    $version = (Select-String -Path "pyproject.toml" -Pattern 'version = "(.*)"').Matches.Groups[1].Value
     Write-Info "Package version: $version"
 } else {
-    Write-Warn "VERSION file not found, using version from pyproject.toml"
-    $version = "unknown"
+    Write-Error "pyproject.toml not found"
+    exit 1
 }
 
 # Clean build artifacts

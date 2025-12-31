@@ -4,9 +4,15 @@ from pathlib import Path
 
 from setuptools import find_packages, setup
 
-# Read version from VERSION file
-version_file = Path(__file__).parent / "VERSION"
-version = version_file.read_text(encoding="utf-8").strip()
+# Read version from pyproject.toml
+version = "0.0.0"
+pyproject_file = Path(__file__).parent / "pyproject.toml"
+if pyproject_file.exists():
+    with open(pyproject_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip().startswith("version ="):
+                version = line.split("=")[1].strip().strip('"')
+                break
 
 # Read long description from README
 readme_file = Path(__file__).parent / "README.md"
@@ -36,7 +42,7 @@ setup(
     },
     packages=find_packages(exclude=["tests", "tests.*", "llm", "llm.*", "docs"]),
     package_data={
-        "": ["VERSION"],
+        "": ["README.md"],
     },
     include_package_data=True,
     install_requires=requirements,

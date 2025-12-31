@@ -28,7 +28,7 @@ Use this checklist for manual publishing or troubleshooting.
 ## Pre-Release Checklist
 
 ### 1. Version Update
-- [ ] Update `VERSION` file with new version number
+- [ ] pyproject.toml version updated
 - [ ] Update `version` in `pyproject.toml` (line 3)
 - [ ] Update version in `install.sh` header comment (line 2)
 - [ ] Update version in `publish.ps1` header comment (line 2)
