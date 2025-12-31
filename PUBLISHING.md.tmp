@@ -1,0 +1,111 @@
+# Publishing to PyPI
+
+This guide covers publishing kryten-userstats to PyPI.
+
+> **🤖 Automated Publishing Available!**
+> 
+> Kryten-userstats supports automated PyPI publishing via GitHub Actions.
+> Simply update the `version` in `pyproject.toml` and push to `main` - the rest happens automatically!
+
+## Publishing Methods
+
+### Method 1: Automated (Recommended)
+
+1. Update version files:
+   ```bash
+   # Update pyproject.toml version
+   # version = "0.5.2"
+   ```
+
+2. Commit and push:
+   ```bash
+   git add pyproject.toml
+   git commit -m "Bump version to 0.5.2"
+   git push origin main
+   ```
+
+3. GitHub Actions will:
+   - Create a GitHub Release automatically
+   - Build and publish to PyPI
+   - Takes ~2-3 minutes total
+
+4. Verify at https://pypi.org/project/kryten-userstats/
+
+### Method 2: Manual (Fallback)
+
+Use this method if automation fails or for local testing.
+
+#### Prerequisites (Manual Publishing)
+
+1. **Poetry** installed:
+   ```bash
+   pip install poetry
+   ```
+
+2. **PyPI Account**: Register at https://pypi.org/account/register/
+
+3. **API Token**: 
+   - Generate token at https://pypi.org/manage/account/token/
+   - Configure Poetry:
+     ```bash
+     poetry config pypi-token.pypi pypi-AgEIpy...
+     ```
+
+#### Using Scripts (Easiest)
+
+**PowerShell (Windows)**:
+```powershell
+.\publish.ps1 -Build -Publish
+```
+
+**Bash (Linux/Mac)**:
+```bash
+./publish.sh --build --publish
+```
+
+#### Manual Steps
+
+```bash
+# Build
+poetry build
+
+# Publish
+poetry publish
+```
+
+### "File already exists" Error
+
+PyPI doesn't allow re-uploading the same version. Increment version number in `pyproject.toml`.
+
+## Distribution Checklist
+
+Before publishing:
+
+- [ ] pyproject.toml version updated
+- [ ] README.md changelog updated
+- [ ] All tests passing (`pytest`)
+- [ ] Code formatted (`black userstats/`)
+- [ ] Linting clean (`ruff check userstats/`)
+- [ ] Type checking clean (`mypy userstats/`)
+- [ ] Git committed and tagged (automated by CI)
+- [ ] Built successfully (`poetry build`)
+
+## Quick Reference
+
+```bash
+# Complete release workflow
+# Update pyproject.toml first!
+poetry build
+poetry publish --dry-run  # Preview
+poetry publish            # Actual upload
+
+# Upgrade kryten-userstats everywhere
+pip install --upgrade kryten-userstats
+```
+
+## Support
+
+For issues with packaging or publication:
+- Check Poetry docs: https://python-poetry.org/docs/
+- Check PyPI docs: https://packaging.python.org/
+- Open issue: https://github.com/grobertson/kryten-userstats/issues
