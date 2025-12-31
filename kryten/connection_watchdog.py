@@ -47,7 +47,7 @@ class ConnectionWatchdog:
         timeout: float,
         on_timeout: Callable[[], Awaitable[None]],
         logger: logging.Logger,
-        enabled: bool = True
+        enabled: bool = True,
     ):
         """Initialize connection watchdog.
 
@@ -84,9 +84,7 @@ class ConnectionWatchdog:
         self._last_event = datetime.now()
         self._task = asyncio.create_task(self._monitor_loop())
 
-        self.logger.info(
-            f"Connection watchdog started (timeout: {self.timeout}s)"
-        )
+        self.logger.info(f"Connection watchdog started (timeout: {self.timeout}s)")
 
     async def stop(self) -> None:
         """Stop watchdog monitoring.
@@ -107,8 +105,7 @@ class ConnectionWatchdog:
             self._task = None
 
         self.logger.info(
-            f"Connection watchdog stopped "
-            f"(timeouts triggered: {self._timeouts_triggered})"
+            f"Connection watchdog stopped " f"(timeouts triggered: {self._timeouts_triggered})"
         )
 
     def pet(self) -> None:
@@ -156,11 +153,11 @@ class ConnectionWatchdog:
             Dictionary with timeout and health metrics.
         """
         return {
-            'enabled': self.enabled,
-            'timeout_seconds': self.timeout,
-            'timeouts_triggered': self._timeouts_triggered,
-            'seconds_since_last_event': self.time_since_last_event(),
-            'is_stale': self.is_stale()
+            "enabled": self.enabled,
+            "timeout_seconds": self.timeout,
+            "timeouts_triggered": self._timeouts_triggered,
+            "seconds_since_last_event": self.time_since_last_event(),
+            "is_stale": self.is_stale(),
         }
 
     async def _monitor_loop(self) -> None:
@@ -190,10 +187,7 @@ class ConnectionWatchdog:
                     try:
                         await self.on_timeout()
                     except Exception as e:
-                        self.logger.error(
-                            f"Error in watchdog timeout handler: {e}",
-                            exc_info=True
-                        )
+                        self.logger.error(f"Error in watchdog timeout handler: {e}", exc_info=True)
 
                     # Reset timer after callback
                     self._last_event = datetime.now()

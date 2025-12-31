@@ -59,7 +59,7 @@ class TestInitialization:
     def test_init(self, mock_sender, mock_nats, mock_logger):
         """Test basic initialization."""
         sub = CommandSubscriber(mock_sender, mock_nats, mock_logger, "mydomain", "mychannel")
-        
+
         assert sub._sender == mock_sender
         assert sub._nats == mock_nats
         assert sub._logger == mock_logger
@@ -75,11 +75,10 @@ class TestStartStop:
     async def test_start_subscribes_to_commands(self, subscriber, mock_nats):
         """Test that start subscribes to correct subject."""
         await subscriber.start()
-        
+
         assert subscriber._running is True
         mock_nats.subscribe.assert_called_once_with(
-            "kryten.commands.cytube.testchannel.>",
-            subscriber._handle_command
+            "kryten.commands.cytube.testchannel.>", subscriber._handle_command
         )
 
     @pytest.mark.asyncio
@@ -87,7 +86,7 @@ class TestStartStop:
         """Test that starting twice doesn't double-subscribe."""
         await subscriber.start()
         await subscriber.start()
-        
+
         # Should only subscribe once
         assert mock_nats.subscribe.call_count == 1
 
@@ -96,10 +95,10 @@ class TestStartStop:
         """Test that stop unsubscribes from commands."""
         mock_subscription = MagicMock()
         mock_nats.subscribe.return_value = mock_subscription
-        
+
         await subscriber.start()
         await subscriber.stop()
-        
+
         assert subscriber._running is False
         mock_nats.unsubscribe.assert_called_once_with(mock_subscription)
         assert subscriber._subscription is None
@@ -108,7 +107,7 @@ class TestStartStop:
     async def test_stop_when_not_running(self, subscriber, mock_nats):
         """Test that stopping when not running is safe."""
         await subscriber.stop()
-        
+
         assert subscriber._running is False
         mock_nats.unsubscribe.assert_not_called()
 
@@ -121,9 +120,9 @@ class TestCommandRouting:
         """Test routing a chat command."""
         command = {"action": "chat", "data": {"message": "Hello!"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.chat", data)
-        
+
         mock_sender.send_chat.assert_called_once_with(message="Hello!")
 
     @pytest.mark.asyncio
@@ -131,9 +130,9 @@ class TestCommandRouting:
         """Test routing a PM command."""
         command = {"action": "pm", "data": {"to": "Alice", "message": "Secret"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.pm", data)
-        
+
         mock_sender.send_pm.assert_called_once_with(to="Alice", message="Secret")
 
     @pytest.mark.asyncio
@@ -141,37 +140,32 @@ class TestCommandRouting:
         """Test routing an add video command."""
         command = {
             "action": "queue",
-            "data": {"url": "yt:test123", "position": "next", "temp": True}
+            "data": {"url": "yt:test123", "position": "next", "temp": True},
         }
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("kryten.commands.cytube.testchannel.queue", data)
-        
-        mock_sender.add_video.assert_called_once_with(
-            url="yt:test123", position="next", temp=True
-        )
+
+        mock_sender.add_video.assert_called_once_with(url="yt:test123", position="next", temp=True)
 
     @pytest.mark.asyncio
     async def test_route_delete_video_command(self, subscriber, mock_sender):
         """Test routing a delete video command."""
         command = {"action": "delete", "data": {"uid": "video-123"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.delete", data)
-        
+
         mock_sender.delete_video.assert_called_once_with(uid="video-123")
 
     @pytest.mark.asyncio
     async def test_route_move_video_command(self, subscriber, mock_sender):
         """Test routing a move video command."""
-        command = {
-            "action": "move",
-            "data": {"uid": "video-1", "after": "video-2"}
-        }
+        command = {"action": "move", "data": {"uid": "video-1", "after": "video-2"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.move", data)
-        
+
         mock_sender.move_video.assert_called_once_with(uid="video-1", after="video-2")
 
     @pytest.mark.asyncio
@@ -179,9 +173,9 @@ class TestCommandRouting:
         """Test routing a jump to command."""
         command = {"action": "jump", "data": {"uid": "video-789"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.jump", data)
-        
+
         mock_sender.jump_to.assert_called_once_with(uid="video-789")
 
     @pytest.mark.asyncio
@@ -189,9 +183,9 @@ class TestCommandRouting:
         """Test routing a clear playlist command."""
         command = {"action": "clear", "data": {}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.clear", data)
-        
+
         mock_sender.clear_playlist.assert_called_once()
 
     @pytest.mark.asyncio
@@ -199,9 +193,9 @@ class TestCommandRouting:
         """Test routing a shuffle playlist command."""
         command = {"action": "shuffle", "data": {}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.shuffle", data)
-        
+
         mock_sender.shuffle_playlist.assert_called_once()
 
     @pytest.mark.asyncio
@@ -209,9 +203,9 @@ class TestCommandRouting:
         """Test routing a set temp command."""
         command = {"action": "setTemp", "data": {"uid": "video-123", "temp": True}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.setTemp", data)
-        
+
         mock_sender.set_temp.assert_called_once_with(uid="video-123", temp=True)
 
     @pytest.mark.asyncio
@@ -219,9 +213,9 @@ class TestCommandRouting:
         """Test routing a pause command."""
         command = {"action": "pause", "data": {}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.pause", data)
-        
+
         mock_sender.pause.assert_called_once()
 
     @pytest.mark.asyncio
@@ -229,9 +223,9 @@ class TestCommandRouting:
         """Test routing a play command."""
         command = {"action": "play", "data": {}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.play", data)
-        
+
         mock_sender.play.assert_called_once()
 
     @pytest.mark.asyncio
@@ -239,49 +233,39 @@ class TestCommandRouting:
         """Test routing a seek command."""
         command = {"action": "seek", "data": {"time": 42.5}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.seek", data)
-        
+
         mock_sender.seek_to.assert_called_once_with(time=42.5)
 
     @pytest.mark.asyncio
     async def test_route_kick_command(self, subscriber, mock_sender):
         """Test routing a kick command."""
-        command = {
-            "action": "kick",
-            "data": {"username": "baduser", "reason": "Spamming"}
-        }
+        command = {"action": "kick", "data": {"username": "baduser", "reason": "Spamming"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.kick", data)
-        
-        mock_sender.kick_user.assert_called_once_with(
-            username="baduser", reason="Spamming"
-        )
+
+        mock_sender.kick_user.assert_called_once_with(username="baduser", reason="Spamming")
 
     @pytest.mark.asyncio
     async def test_route_ban_command(self, subscriber, mock_sender):
         """Test routing a ban command."""
-        command = {
-            "action": "ban",
-            "data": {"username": "troll", "reason": "Harassment"}
-        }
+        command = {"action": "ban", "data": {"username": "troll", "reason": "Harassment"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.ban", data)
-        
-        mock_sender.ban_user.assert_called_once_with(
-            username="troll", reason="Harassment"
-        )
+
+        mock_sender.ban_user.assert_called_once_with(username="troll", reason="Harassment")
 
     @pytest.mark.asyncio
     async def test_route_voteskip_command(self, subscriber, mock_sender):
         """Test routing a voteskip command."""
         command = {"action": "voteskip", "data": {}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.voteskip", data)
-        
+
         mock_sender.voteskip.assert_called_once()
 
 
@@ -292,9 +276,9 @@ class TestErrorHandling:
     async def test_invalid_json_logs_error(self, subscriber, mock_logger):
         """Test handling invalid JSON."""
         data = b"not valid json"
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.bad", data)
-        
+
         mock_logger.error.assert_called_once()
 
     @pytest.mark.asyncio
@@ -302,9 +286,9 @@ class TestErrorHandling:
         """Test handling command without action field."""
         command = {"data": {"message": "Hello"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.test", data)
-        
+
         mock_logger.warning.assert_called_once()
         # Should not call any sender methods
         mock_sender.send_chat.assert_not_called()
@@ -314,9 +298,9 @@ class TestErrorHandling:
         """Test handling unknown action."""
         command = {"action": "unknown_action", "data": {}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.unknown", data)
-        
+
         # Should log warning for unknown action
         assert mock_logger.warning.call_count >= 1
 
@@ -326,7 +310,7 @@ class TestErrorHandling:
         mock_sender.send_chat.side_effect = Exception("Socket error")
         command = {"action": "chat", "data": {"message": "Test"}}
         data = json.dumps(command).encode()
-        
+
         await subscriber._handle_command("cytube.commands.testchannel.chat", data)
-        
+
         mock_logger.error.assert_called_once()

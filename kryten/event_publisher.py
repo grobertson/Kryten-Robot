@@ -209,7 +209,9 @@ class EventPublisher:
                     )
                     # If we have a kick callback, trigger it to initiate shutdown
                     if self._on_kicked:
-                        self.logger.warning("Bot was kicked from channel, initiating graceful shutdown")
+                        self.logger.warning(
+                            "Bot was kicked from channel, initiating graceful shutdown"
+                        )
                         self._on_kicked()
                         # Continue processing to publish the kick event to NATS before shutting down
 

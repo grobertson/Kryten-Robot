@@ -1,7 +1,6 @@
-
 file_path = r"d:\Devel\kryten-py\src\kryten\client.py"
 
-with open(file_path, 'r', encoding='utf-8') as f:
+with open(file_path, encoding="utf-8") as f:
     content = f.read()
 
 if "def _send_command" in content:
@@ -13,7 +12,7 @@ if "def _send_command" in content:
             print(f"Line {i+1}: {line}")
             # Print next few lines
             for j in range(1, 20):
-                if i+j < len(lines):
+                if i + j < len(lines):
                     print(f"Line {i+1+j}: {lines[i+j]}")
             break
 else:

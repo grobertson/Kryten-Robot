@@ -89,7 +89,7 @@ class NatsClient:
         Returns:
             Server URL if connected, None otherwise.
         """
-        if self._nc and self._nc.is_connected:
+        if self._nc and self._nc.is_connected and self._nc.connected_url:
             return self._nc.connected_url.netloc
         return None
 
@@ -105,9 +105,9 @@ class NatsClient:
             >>> print(f"Published: {stats['messages_published']}")
         """
         return {
-            'messages_published': self._messages_published,
-            'bytes_sent': self._bytes_sent,
-            'errors': self._errors,
+            "messages_published": self._messages_published,
+            "bytes_sent": self._bytes_sent,
+            "errors": self._errors,
         }
 
     async def connect(self) -> None:
@@ -129,49 +129,42 @@ class NatsClient:
             self.logger.warning("Already connected to NATS, ignoring connect() call")
             return
 
-        self.logger.info(
-            "Connecting to NATS",
-            extra={"servers": self.config.servers}
-        )
+        self.logger.info("Connecting to NATS", extra={"servers": self.config.servers})
 
         try:
             # Create NATS client
             self._nc = NATS()
 
-            # Configure connection options
-            options = {
-                "servers": self.config.servers,
-                "connect_timeout": self.config.connect_timeout,
-                "max_reconnect_attempts": self.config.max_reconnect_attempts if self.config.allow_reconnect else 0,
-                "reconnect_time_wait": self.config.reconnect_time_wait,
-                "allow_reconnect": self.config.allow_reconnect,
-                "error_cb": self._error_callback,
-                "disconnected_cb": self._disconnected_callback,
-                "reconnected_cb": self._reconnected_callback,
-                "closed_cb": self._closed_callback,
-            }
-
-            # Add credentials if provided
-            if self.config.user and self.config.password:
-                options["user"] = self.config.user
-                options["password"] = self.config.password
-                self.logger.debug("Using NATS credentials for authentication")
-
             # Connect
-            await self._nc.connect(**options)
+            await self._nc.connect(
+                servers=self.config.servers,
+                connect_timeout=self.config.connect_timeout,
+                max_reconnect_attempts=(
+                    self.config.max_reconnect_attempts if self.config.allow_reconnect else 0
+                ),
+                reconnect_time_wait=self.config.reconnect_time_wait,
+                allow_reconnect=self.config.allow_reconnect,
+                error_cb=self._error_callback,
+                disconnected_cb=self._disconnected_callback,
+                reconnected_cb=self._reconnected_callback,
+                closed_cb=self._closed_callback,
+                user=self.config.user,
+                password=self.config.password,
+            )
 
             self._connected = True
 
             # Track connection timing
             import time
+
             self._connected_since = time.time()
 
             self.logger.info(
                 "Connected to NATS",
                 extra={
                     "servers": self.config.servers,
-                    "server_info": self._nc.connected_server_version
-                }
+                    "server_info": self._nc.connected_server_version,
+                },
             )
 
         except asyncio.CancelledError:
@@ -181,8 +174,7 @@ class NatsClient:
 
         except Exception as e:
             self.logger.error(
-                "Failed to connect to NATS",
-                extra={"servers": self.config.servers, "error": str(e)}
+                "Failed to connect to NATS", extra={"servers": self.config.servers, "error": str(e)}
             )
             await self._cleanup()
             raise ConnectionError(f"Failed to connect to NATS: {e}") from e
@@ -247,7 +239,7 @@ class NatsClient:
         Examples:
             >>> await client.publish("test.subject", b"hello world")
         """
-        if not self.is_connected:
+        if not self.is_connected or self._nc is None:
             raise NotConnectedError("Not connected to NATS server")
 
         if not subject:
@@ -262,22 +254,18 @@ class NatsClient:
             self._bytes_sent += len(data)
 
             self.logger.debug(
-                "Published message to NATS",
-                extra={"subject": subject, "size": len(data)}
+                "Published message to NATS", extra={"subject": subject, "size": len(data)}
             )
 
         except Exception as e:
             self._errors += 1
             self.logger.error(
-                "Failed to publish message",
-                extra={"subject": subject, "error": str(e)}
+                "Failed to publish message", extra={"subject": subject, "error": str(e)}
             )
             raise
 
     async def subscribe(
-        self,
-        subject: str,
-        callback: Callable[[str, bytes], Awaitable[None]]
+        self, subject: str, callback: Callable[[str, bytes], Awaitable[None]]
     ) -> Subscription:
         """Subscribe to NATS subject with callback.
 
@@ -297,7 +285,7 @@ class NatsClient:
             ...     print(f"Received on {subject}: {data}")
             >>> sub = await client.subscribe("test.>", handler)
         """
-        if not self.is_connected:
+        if not self.is_connected or self._nc is None:
             raise NotConnectedError("Not connected to NATS server")
 
         if not subject:
@@ -313,25 +301,19 @@ class NatsClient:
 
             subscription = await self._nc.subscribe(subject, cb=nats_callback)
 
-            self.logger.debug(
-                "Subscribed to NATS subject",
-                extra={"subject": subject}
-            )
+            self.logger.debug("Subscribed to NATS subject", extra={"subject": subject})
 
             return subscription
 
         except Exception as e:
             self._errors += 1
             self.logger.error(
-                "Failed to subscribe to subject",
-                extra={"subject": subject, "error": str(e)}
+                "Failed to subscribe to subject", extra={"subject": subject, "error": str(e)}
             )
             raise
 
     async def subscribe_request_reply(
-        self,
-        subject: str,
-        callback: Callable[[Any], Awaitable[None]]
+        self, subject: str, callback: Callable[[Any], Awaitable[None]]
     ) -> Subscription:
         """Subscribe to NATS subject for request-reply pattern.
 
@@ -356,7 +338,7 @@ class NatsClient:
             ...     await nats.publish(msg.reply, json.dumps(response).encode())
             >>> sub = await client.subscribe_request_reply("kryten.robot.command", handler)
         """
-        if not self.is_connected:
+        if not self.is_connected or self._nc is None:
             raise NotConnectedError("Not connected to NATS server")
 
         if not subject:
@@ -370,8 +352,7 @@ class NatsClient:
             subscription = await self._nc.subscribe(subject, cb=callback)
 
             self.logger.debug(
-                "Subscribed to NATS subject (request-reply)",
-                extra={"subject": subject}
+                "Subscribed to NATS subject (request-reply)", extra={"subject": subject}
             )
 
             return subscription
@@ -379,8 +360,7 @@ class NatsClient:
         except Exception as e:
             self._errors += 1
             self.logger.error(
-                "Failed to subscribe to subject",
-                extra={"subject": subject, "error": str(e)}
+                "Failed to subscribe to subject", extra={"subject": subject, "error": str(e)}
             )
             raise
 
@@ -421,11 +401,10 @@ class NatsClient:
 
         # Update connected_since for the new connection
         import time
+
         self._connected_since = time.time()
 
-        self.logger.info(
-            f"Reconnected to NATS server (reconnect #{self._reconnect_count})"
-        )
+        self.logger.info(f"Reconnected to NATS server (reconnect #{self._reconnect_count})")
         self._connected = True
 
     async def _closed_callback(self) -> None:

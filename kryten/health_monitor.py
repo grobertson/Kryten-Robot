@@ -44,14 +44,12 @@ import logging
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, cast
 
+from .command_subscriber import CommandSubscriber
 from .cytube_connector import CytubeConnector
 from .event_publisher import EventPublisher
 from .nats_client import NatsClient
-
-if TYPE_CHECKING:
-    from .command_subscriber import CommandSubscriber
 
 
 class HealthStatus:
@@ -127,7 +125,9 @@ class HealthStatus:
 
         # Add command subscriber if enabled
         if self.command_subscriber:
-            components["command_subscriber"] = "running" if self.command_subscriber.is_running else "stopped"
+            components["command_subscriber"] = (
+                "running" if self.command_subscriber.is_running else "stopped"
+            )
 
         # Aggregate metrics from components
         connector_stats = self.connector.stats
@@ -155,85 +155,76 @@ class HealthStatus:
         }
 
     def get_prometheus_metrics(self) -> str:
-        """Get Prometheus-compatible metrics.
+        """Get metrics in Prometheus format.
 
         Returns:
-            Prometheus text format metrics.
-
-        Examples:
-            >>> status = HealthStatus(connector, nats, publisher)
-            >>> metrics = status.get_prometheus_metrics()
-            >>> print(metrics)
-            # HELP kryten_up Whether Kryten is up (1) or down (0)
-            # TYPE kryten_up gauge
-            kryten_up 1
-            ...
+            String containing metrics in Prometheus text format.
         """
+        metrics = []
+        timestamp = int(time.time() * 1000)
+
+        # Basic process metrics
+        metrics.append("# HELP kryten_up Service up status")
+        metrics.append("# TYPE kryten_up gauge")
+        metrics.append(f"kryten_up 1 {timestamp}")
+
         uptime = time.time() - self.start_time
-        is_healthy = 1 if self.is_healthy() else 0
+        metrics.append("# HELP kryten_uptime_seconds Service uptime in seconds")
+        metrics.append("# TYPE kryten_uptime_seconds gauge")
+        metrics.append(f"kryten_uptime_seconds {uptime} {timestamp}")
 
-        connector_stats = self.connector.stats
-        nats_stats = self.nats_client.stats
-        publisher_stats = self.publisher.stats
+        # Connection metrics
+        metrics.append("# HELP kryten_cytube_connected CyTube connection status")
+        metrics.append("# TYPE kryten_cytube_connected gauge")
+        metrics.append(
+            f"kryten_cytube_connected {1 if self.connector.is_connected else 0} {timestamp}"
+        )
 
-        lines = [
-            "# HELP kryten_up Whether Kryten is up (1) or down (0)",
-            "# TYPE kryten_up gauge",
-            f"kryten_up {is_healthy}",
-            "",
-            "# HELP kryten_uptime_seconds Time since application start",
-            "# TYPE kryten_uptime_seconds counter",
-            f"kryten_uptime_seconds {uptime:.2f}",
-            "",
-            "# HELP kryten_events_received_total Events received from CyTube",
-            "# TYPE kryten_events_received_total counter",
-            f"kryten_events_received_total {connector_stats.get('events_processed', 0)}",
-            "",
-            "# HELP kryten_events_published_total Events published to NATS",
-            "# TYPE kryten_events_published_total counter",
-            f"kryten_events_published_total {publisher_stats.get('events_published', 0)}",
-            "",
-            "# HELP kryten_publish_errors_total Publishing errors",
-            "# TYPE kryten_publish_errors_total counter",
-            f"kryten_publish_errors_total {publisher_stats.get('publish_errors', 0)}",
-            "",
-            "# HELP kryten_nats_bytes_sent_total Bytes sent to NATS",
-            "# TYPE kryten_nats_bytes_sent_total counter",
-            f"kryten_nats_bytes_sent_total {nats_stats.get('bytes_sent', 0)}",
-            "",
-            "# HELP kryten_component_connected Component connection status (1=connected, 0=disconnected)",
-            "# TYPE kryten_component_connected gauge",
-            f"kryten_component_connected{{component=\"cytube\"}} {1 if self.connector.is_connected else 0}",
-            f"kryten_component_connected{{component=\"nats\"}} {1 if self.nats_client.is_connected else 0}",
-            f"kryten_component_connected{{component=\"publisher\"}} {1 if self.publisher.is_running else 0}",
-        ]
+        metrics.append("# HELP kryten_nats_connected NATS connection status")
+        metrics.append("# TYPE kryten_nats_connected gauge")
+        metrics.append(
+            f"kryten_nats_connected {1 if self.nats_client.is_connected else 0} {timestamp}"
+        )
 
-        # Add command metrics if subscriber enabled
+        # Message metrics
+        pub_stats = self.publisher.stats if hasattr(self.publisher, "stats") else {}
+        published = pub_stats.get("messages_published", 0)
+        errors = pub_stats.get("errors", 0)
+
+        metrics.append("# HELP kryten_messages_published_total Total messages published")
+        metrics.append("# TYPE kryten_messages_published_total counter")
+        metrics.append(f"kryten_messages_published_total {published} {timestamp}")
+
+        metrics.append("# HELP kryten_publish_errors_total Total publish errors")
+        metrics.append("# TYPE kryten_publish_errors_total counter")
+        metrics.append(f"kryten_publish_errors_total {errors} {timestamp}")
+
+        # Command metrics
         if self.command_subscriber:
-            command_stats = self.command_subscriber.stats
-            lines.extend([
-                f"kryten_component_connected{{component=\"command_subscriber\"}} {1 if self.command_subscriber.is_running else 0}",
-                "",
-                "# HELP kryten_commands_processed_total Commands received and executed",
-                "# TYPE kryten_commands_processed_total counter",
-                f"kryten_commands_processed_total {command_stats.get('commands_processed', 0)}",
-                "",
-                "# HELP kryten_commands_failed_total Commands that failed to execute",
-                "# TYPE kryten_commands_failed_total counter",
-                f"kryten_commands_failed_total {command_stats.get('commands_failed', 0)}",
-            ])
+            cmd_stats = self.command_subscriber.stats
+            processed = cmd_stats.get("commands_processed", 0)
+            failed = cmd_stats.get("commands_failed", 0)
 
-        lines.append("")
+            metrics.append("# HELP kryten_commands_processed_total Total commands processed")
+            metrics.append("# TYPE kryten_commands_processed_total counter")
+            metrics.append(f"kryten_commands_processed_total {processed} {timestamp}")
 
-        return "\n".join(lines)
+            metrics.append("# HELP kryten_commands_failed_total Total commands failed")
+            metrics.append("# TYPE kryten_commands_failed_total counter")
+            metrics.append(f"kryten_commands_failed_total {failed} {timestamp}")
+
+        return "\n".join(metrics)
+
+
+class KrytenHealthServer(HTTPServer):
+    """Extended HTTPServer with health status and logger."""
+
+    health_status: HealthStatus
+    logger: logging.Logger
 
 
 class HealthRequestHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for health endpoints.
-
-    Handles /health and /metrics endpoints, accessing the HealthStatus
-    instance attached to the server.
-    """
+    """Handle health check requests."""
 
     # Suppress default logging (we use structured logging)
     def log_message(self, format, *args):
@@ -256,7 +247,7 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
                 self._handle_not_found()
         except Exception as e:
             # Log error but don't let it crash the server
-            if hasattr(self.server, 'logger'):
+            if hasattr(self.server, "logger"):
                 self.server.logger.error(f"Health endpoint error: {e}", exc_info=True)
             self.send_error(500, "Internal Server Error")
 
@@ -265,7 +256,8 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
 
         Returns 200 OK if healthy, 503 Service Unavailable if unhealthy.
         """
-        status: HealthStatus = self.server.health_status
+        server = cast(KrytenHealthServer, self.server)
+        status: HealthStatus = server.health_status
         status_dict = status.get_status_dict()
 
         # Determine HTTP status code
@@ -284,7 +276,8 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
 
         Returns Prometheus-compatible metrics.
         """
-        status: HealthStatus = self.server.health_status
+        server = cast(KrytenHealthServer, self.server)
+        status: HealthStatus = server.health_status
         metrics_text = status.get_prometheus_metrics()
 
         self.send_response(200)
@@ -299,10 +292,7 @@ class HealthRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.end_headers()
 
-        error_dict = {
-            "error": "Not Found",
-            "message": "Available endpoints: /health, /metrics"
-        }
+        error_dict = {"error": "Not Found", "message": "Available endpoints: /health, /metrics"}
         self.wfile.write(json.dumps(error_dict).encode("utf-8"))
 
 
@@ -359,7 +349,7 @@ class HealthMonitor:
         self.port = port
 
         self._health_status = HealthStatus(connector, nats_client, publisher, command_subscriber)
-        self._server: HTTPServer | None = None
+        self._server: KrytenHealthServer | None = None
         self._server_thread: Thread | None = None
         self._running = False
 
@@ -380,23 +370,18 @@ class HealthMonitor:
 
         try:
             # Create HTTP server
-            self._server = HTTPServer((self.host, self.port), HealthRequestHandler)
+            self._server = KrytenHealthServer((self.host, self.port), HealthRequestHandler)
             self._server.health_status = self._health_status
             self._server.logger = self.logger
 
             # Start server on separate thread
             self._server_thread = Thread(
-                target=self._run_server,
-                daemon=True,
-                name="health-monitor"
+                target=self._run_server, daemon=True, name="health-monitor"
             )
             self._server_thread.start()
 
             self._running = True
-            self.logger.info(
-                "Health monitor started",
-                extra={"host": self.host, "port": self.port}
-            )
+            self.logger.info("Health monitor started", extra={"host": self.host, "port": self.port})
 
         except Exception as e:
             self.logger.error(f"Failed to start health monitor: {e}", exc_info=True)
@@ -409,7 +394,8 @@ class HealthMonitor:
         """
         try:
             self.logger.debug("Health monitor server thread started")
-            self._server.serve_forever()
+            if self._server:
+                self._server.serve_forever()
         except Exception as e:
             self.logger.error(f"Health monitor server error: {e}", exc_info=True)
         finally:

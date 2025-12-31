@@ -1,7 +1,8 @@
 """Setup script for kryten-robot package."""
 
 from pathlib import Path
-from setuptools import setup, find_packages
+
+from setuptools import find_packages, setup
 
 # Read version from VERSION file
 version_file = Path(__file__).parent / "VERSION"

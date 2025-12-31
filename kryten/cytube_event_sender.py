@@ -103,7 +103,7 @@ class CytubeEventSender:
     # Playlist Methods
     # ========================================================================
 
-    def _transform_grindhouse_url(self, url: str) -> tuple[str, str, str]:
+    def _transform_grindhouse_url(self, url: str) -> tuple[str | None, str | None, str]:
         """Transform 420grindhouse.com view URLs to custom media format.
 
         Converts URLs like:
@@ -121,12 +121,14 @@ class CytubeEventSender:
         import re
 
         # Match 420grindhouse.com view URLs with m= parameter
-        pattern = r'https?://(?:www\.)?420grindhouse\.com/view\?m=([A-Za-z0-9_-]+)'
+        pattern = r"https?://(?:www\.)?420grindhouse\.com/view\?m=([A-Za-z0-9_-]+)"
         match = re.match(pattern, url)
 
         if match:
             media_id = match.group(1)
-            json_url = f"https://www.420grindhouse.com/api/v1/media/cytube/{media_id}.json?format=json"
+            json_url = (
+                f"https://www.420grindhouse.com/api/v1/media/cytube/{media_id}.json?format=json"
+            )
             self._logger.info(f"Transformed grindhouse URL: {url} -> type=cm, id={json_url}")
             return ("cm", json_url, url)
 
@@ -134,9 +136,9 @@ class CytubeEventSender:
 
     async def add_video(
         self,
-        url: str = None,
-        media_type: str = None,
-        media_id: str = None,
+        url: str | None = None,
+        media_type: str | None = None,
+        media_id: str | None = None,
         position: str = "end",
         temp: bool = False,
     ) -> bool:
@@ -174,7 +176,9 @@ class CytubeEventSender:
                 # Check if URL needs transformation (420grindhouse.com)
                 transformed_type, transformed_id, original_url = self._transform_grindhouse_url(url)
 
-                self._logger.info(f"URL transformation result: type={transformed_type}, id={transformed_id}, original={original_url}")
+                self._logger.info(
+                    f"URL transformation result: type={transformed_type}, id={transformed_id}, original={original_url}"
+                )
 
                 if transformed_type:
                     # Use custom media format for transformed URLs
@@ -203,7 +207,7 @@ class CytubeEventSender:
                 self._audit_logger.log_playlist_operation(
                     operation="queue",
                     media_title=url,  # URL will be replaced with title when available
-                    details={"position": position, "temp": temp}
+                    details={"position": position, "temp": temp},
                 )
 
             return True
@@ -238,10 +242,7 @@ class CytubeEventSender:
 
             # Audit log playlist operation
             if self._audit_logger:
-                self._audit_logger.log_playlist_operation(
-                    operation="delete",
-                    details={"uid": uid}
-                )
+                self._audit_logger.log_playlist_operation(operation="delete", details={"uid": uid})
 
             return True
 
@@ -281,8 +282,7 @@ class CytubeEventSender:
             # Audit log playlist operation
             if self._audit_logger:
                 self._audit_logger.log_playlist_operation(
-                    operation="moveMedia",
-                    details={"uid": uid, "after": after}
+                    operation="moveMedia", details={"uid": uid, "after": after}
                 )
 
             return True
@@ -318,10 +318,7 @@ class CytubeEventSender:
 
             # Audit log playlist operation
             if self._audit_logger:
-                self._audit_logger.log_playlist_operation(
-                    operation="jumpTo",
-                    details={"uid": uid}
-                )
+                self._audit_logger.log_playlist_operation(operation="jumpTo", details={"uid": uid})
 
             return True
 
@@ -348,9 +345,7 @@ class CytubeEventSender:
 
             # Audit log playlist operation
             if self._audit_logger:
-                self._audit_logger.log_playlist_operation(
-                    operation="clearPlaylist"
-                )
+                self._audit_logger.log_playlist_operation(operation="clearPlaylist")
 
             return True
 
@@ -377,9 +372,7 @@ class CytubeEventSender:
 
             # Audit log playlist operation
             if self._audit_logger:
-                self._audit_logger.log_playlist_operation(
-                    operation="shufflePlaylist"
-                )
+                self._audit_logger.log_playlist_operation(operation="shufflePlaylist")
 
             return True
 
@@ -415,8 +408,7 @@ class CytubeEventSender:
             # Audit log playlist operation
             if self._audit_logger:
                 self._audit_logger.log_playlist_operation(
-                    operation="setTemp",
-                    details={"uid": uid, "temp": temp}
+                    operation="setTemp", details={"uid": uid, "temp": temp}
                 )
 
             return True
@@ -564,9 +556,7 @@ class CytubeEventSender:
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="ban",
-                    target=username,
-                    details={"reason": reason} if reason else {}
+                    operation="ban", target=username, details={"reason": reason} if reason else {}
                 )
 
             return True
@@ -767,8 +757,7 @@ class CytubeEventSender:
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="setMotd",
-                    details={"length": len(motd)}
+                    operation="setMotd", details={"length": len(motd)}
                 )
 
             return True
@@ -795,9 +784,11 @@ class CytubeEventSender:
 
         try:
             # Check size (20KB = 20480 bytes)
-            css_bytes = len(css.encode('utf-8'))
+            css_bytes = len(css.encode("utf-8"))
             if css_bytes > 20480:
-                self._logger.warning(f"CSS size {css_bytes} bytes exceeds 20KB limit, may be rejected")
+                self._logger.warning(
+                    f"CSS size {css_bytes} bytes exceeds 20KB limit, may be rejected"
+                )
 
             payload = {"css": css}
             self._logger.debug(f"Setting channel CSS: {css_bytes} bytes")
@@ -806,8 +797,7 @@ class CytubeEventSender:
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="setChannelCSS",
-                    details={"size_bytes": css_bytes}
+                    operation="setChannelCSS", details={"size_bytes": css_bytes}
                 )
 
             return True
@@ -834,9 +824,11 @@ class CytubeEventSender:
 
         try:
             # Check size (20KB = 20480 bytes)
-            js_bytes = len(js.encode('utf-8'))
+            js_bytes = len(js.encode("utf-8"))
             if js_bytes > 20480:
-                self._logger.warning(f"JS size {js_bytes} bytes exceeds 20KB limit, may be rejected")
+                self._logger.warning(
+                    f"JS size {js_bytes} bytes exceeds 20KB limit, may be rejected"
+                )
 
             payload = {"js": js}
             self._logger.debug(f"Setting channel JS: {js_bytes} bytes")
@@ -845,8 +837,7 @@ class CytubeEventSender:
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="setChannelJS",
-                    details={"size_bytes": js_bytes}
+                    operation="setChannelJS", details={"size_bytes": js_bytes}
                 )
 
             return True
@@ -894,8 +885,7 @@ class CytubeEventSender:
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="setOptions",
-                    details={"option_count": len(options)}
+                    operation="setOptions", details={"option_count": len(options)}
                 )
 
             return True
@@ -955,8 +945,7 @@ class CytubeEventSender:
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="setPermissions",
-                    details={"permission_count": len(permissions)}
+                    operation="setPermissions", details={"permission_count": len(permissions)}
                 )
 
             return True
@@ -983,20 +972,14 @@ class CytubeEventSender:
             return False
 
         try:
-            payload = {
-                "name": name,
-                "image": image,
-                "source": source
-            }
+            payload = {"name": name, "image": image, "source": source}
             self._logger.debug(f"Updating emote: {name} from {source}")
             await self._connector._socket.emit("updateEmote", payload)
 
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="updateEmote",
-                    target=name,
-                    details={"image": image, "source": source}
+                    operation="updateEmote", target=name, details={"image": image, "source": source}
                 )
 
             return True
@@ -1027,10 +1010,7 @@ class CytubeEventSender:
 
             # Audit log admin operation
             if self._audit_logger:
-                self._audit_logger.log_admin_operation(
-                    operation="removeEmote",
-                    target=name
-                )
+                self._audit_logger.log_admin_operation(operation="removeEmote", target=name)
 
             return True
 
@@ -1045,7 +1025,7 @@ class CytubeEventSender:
         flags: str,
         replace: str,
         filterlinks: bool = False,
-        active: bool = True
+        active: bool = True,
     ) -> bool:
         """
         Add a chat filter.
@@ -1073,7 +1053,7 @@ class CytubeEventSender:
                 "flags": flags,
                 "replace": replace,
                 "filterlinks": filterlinks,
-                "active": active
+                "active": active,
             }
             self._logger.debug(f"Adding chat filter: {name}")
             await self._connector._socket.emit("addFilter", payload)
@@ -1083,7 +1063,7 @@ class CytubeEventSender:
                 self._audit_logger.log_admin_operation(
                     operation="addFilter",
                     target=name,
-                    details={"source": source, "flags": flags, "replace": replace}
+                    details={"source": source, "flags": flags, "replace": replace},
                 )
 
             return True
@@ -1099,7 +1079,7 @@ class CytubeEventSender:
         flags: str,
         replace: str,
         filterlinks: bool = False,
-        active: bool = True
+        active: bool = True,
     ) -> bool:
         """
         Update an existing chat filter.
@@ -1127,7 +1107,7 @@ class CytubeEventSender:
                 "flags": flags,
                 "replace": replace,
                 "filterlinks": filterlinks,
-                "active": active
+                "active": active,
             }
             self._logger.debug(f"Updating chat filter: {name}")
             await self._connector._socket.emit("updateFilter", payload)
@@ -1137,7 +1117,7 @@ class CytubeEventSender:
                 self._audit_logger.log_admin_operation(
                     operation="updateFilter",
                     target=name,
-                    details={"source": source, "flags": flags, "replace": replace}
+                    details={"source": source, "flags": flags, "replace": replace},
                 )
 
             return True
@@ -1168,10 +1148,7 @@ class CytubeEventSender:
 
             # Audit log admin operation
             if self._audit_logger:
-                self._audit_logger.log_admin_operation(
-                    operation="removeFilter",
-                    target=name
-                )
+                self._audit_logger.log_admin_operation(operation="removeFilter", target=name)
 
             return True
 
@@ -1182,11 +1159,7 @@ class CytubeEventSender:
     # PHASE 3: Advanced Admin Functions (Rank 2-4+)
 
     async def new_poll(
-        self,
-        title: str,
-        options: list[str],
-        obscured: bool = False,
-        timeout: int = 0
+        self, title: str, options: list[str], obscured: bool = False, timeout: int = 0
     ) -> bool:
         """
         Create a new poll.
@@ -1206,20 +1179,14 @@ class CytubeEventSender:
             return False
 
         try:
-            payload = {
-                "title": title,
-                "opts": options,
-                "obscured": obscured,
-                "timeout": timeout
-            }
+            payload = {"title": title, "opts": options, "obscured": obscured, "timeout": timeout}
             self._logger.debug(f"Creating poll: {title} with {len(options)} options")
             await self._connector._socket.emit("newPoll", payload)
 
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="newPoll",
-                    details={"title": title, "options": len(options)}
+                    operation="newPoll", details={"title": title, "options": len(options)}
                 )
 
             return True
@@ -1271,9 +1238,7 @@ class CytubeEventSender:
 
             # Audit log admin operation
             if self._audit_logger:
-                self._audit_logger.log_admin_operation(
-                    operation="closePoll"
-                )
+                self._audit_logger.log_admin_operation(operation="closePoll")
 
             return True
 
@@ -1310,9 +1275,7 @@ class CytubeEventSender:
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="setChannelRank",
-                    target=username,
-                    details={"rank": rank}
+                    operation="setChannelRank", target=username, details={"rank": rank}
                 )
 
             return True
@@ -1416,11 +1379,7 @@ class CytubeEventSender:
             self._logger.error(f"Failed to read channel log: {e}", exc_info=True)
             return False
 
-    async def search_library(
-        self,
-        query: str,
-        source: str = "library"
-    ) -> bool:
+    async def search_library(self, query: str, source: str = "library") -> bool:
         """
         Search channel library.
         Requires appropriate rank based on channel permissions.

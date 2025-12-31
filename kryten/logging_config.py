@@ -40,7 +40,7 @@ import logging.config
 import logging.handlers
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .correlation import CorrelationFilter
 
@@ -140,7 +140,9 @@ class JSONFormatter(logging.Formatter):
         component = record.name.split(".")[-1] if "." in record.name else record.name
 
         log_data = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -185,7 +187,7 @@ class TextFormatter(logging.Formatter):
         component = record.name.split(".")[-1] if "." in record.name else record.name
 
         # Format timestamp
-        timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
 
         # Get correlation ID
         correlation_id = getattr(record, "correlation_id", "N/A")
@@ -227,13 +229,14 @@ def setup_logging(config: LoggingConfig) -> None:
         raise ValueError("file_path required when output='file'")
 
     # Choose formatter
+    formatter: logging.Formatter
     if config.format == "json":
         formatter = JSONFormatter()
     else:
         formatter = TextFormatter()
 
     # Create handlers
-    handlers = {}
+    handlers: dict[str, logging.Handler] = {}
 
     if config.output == "console":
         # Console output: INFO+ to stdout, WARNING+ to stderr
@@ -249,6 +252,7 @@ def setup_logging(config: LoggingConfig) -> None:
         handlers["stderr"] = stderr_handler
 
     else:  # file
+        assert config.file_path is not None
         # File output with rotation
         file_handler = logging.handlers.RotatingFileHandler(
             config.file_path,

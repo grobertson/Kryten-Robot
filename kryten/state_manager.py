@@ -7,9 +7,10 @@ without directly connecting to the CyTube instance.
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
-from nats.errors import NoRespondersError, TimeoutError as NatsTimeoutError
+from nats.errors import NoRespondersError
+from nats.errors import TimeoutError as NatsTimeoutError
 from nats.js import api
 from nats.js.errors import ServerError, ServiceUnavailableError
 from nats.js.kv import KeyValue
@@ -209,6 +210,9 @@ class StateManager:
             self._logger.info(f"Starting state manager for channel: {self._channel}")
 
             # Get JetStream context
+            if self._nats._nc is None:
+                raise RuntimeError("NATS client not initialized")
+
             js = self._nats._nc.jetstream()
 
             # Create or bind KV buckets
@@ -330,7 +334,7 @@ class StateManager:
             >>> emotes = [{"name": "Kappa", "image": "..."}]
             >>> await manager.update_emotes(emotes)
         """
-        if not self._running:
+        if not self._running or self._kv_emotes is None:
             self._logger.warning("Cannot update emotes: state manager not running")
             return
 
@@ -362,7 +366,7 @@ class StateManager:
             >>> items = [{"uid": "abc", "title": "Video 1"}]
             >>> await manager.set_playlist(items)
         """
-        if not self._running:
+        if not self._running or self._kv_playlist is None:
             self._logger.warning("Cannot set playlist: state manager not running")
             return
 
@@ -391,7 +395,7 @@ class StateManager:
             >>> item = {"uid": "xyz", "title": "New Video"}
             >>> await manager.add_playlist_item(item)
         """
-        if not self._running:
+        if not self._running or self._kv_playlist is None:
             return
 
         try:
@@ -413,7 +417,9 @@ class StateManager:
             playlist_json = json.dumps(self._playlist).encode()
             await self._kv_playlist.put("items", playlist_json)
 
-            self._logger.debug(f"Added playlist item: {item.get('uid')} ({item.get('title', 'Unknown')})")
+            self._logger.debug(
+                f"Added playlist item: {item.get('uid')} ({item.get('title', 'Unknown')})"
+            )
 
         except Exception as e:
             self._logger.error(f"Failed to add playlist item: {e}", exc_info=True)
@@ -429,7 +435,7 @@ class StateManager:
         Examples:
             >>> await manager.remove_playlist_item("xyz")
         """
-        if not self._running:
+        if not self._running or self._kv_playlist is None:
             return
 
         try:
@@ -457,7 +463,7 @@ class StateManager:
         Examples:
             >>> await manager.move_playlist_item("xyz", "abc")
         """
-        if not self._running:
+        if not self._running or self._kv_playlist is None:
             return
 
         try:
@@ -503,7 +509,7 @@ class StateManager:
 
         Called when 'playlist' event with empty list received.
         """
-        if not self._running:
+        if not self._running or self._kv_playlist is None:
             return
 
         try:
@@ -534,7 +540,7 @@ class StateManager:
             >>> media = {"id": "xyz", "title": "Movie", "seconds": 3600, "type": "yt"}
             >>> await manager.update_current_media(media)
         """
-        if not self._running:
+        if not self._running or self._kv_playlist is None:
             self._logger.warning("Cannot update current media: state manager not running")
             return
 
@@ -580,12 +586,12 @@ class StateManager:
             >>> users = [{"name": "Alice", "rank": 2}]
             >>> await manager.set_userlist(users)
         """
-        if not self._running:
+        if not self._running or self._kv_userlist is None:
             self._logger.warning("Cannot set userlist: state manager not running")
             return
 
         try:
-            self._users = {user.get("name"): user for user in users if user.get("name")}
+            self._users = {str(user.get("name")): user for user in users if user.get("name")}
 
             # Store as JSON
             userlist_json = json.dumps(list(self._users.values())).encode()
@@ -608,7 +614,7 @@ class StateManager:
             >>> user = {"name": "Bob", "rank": 1}
             >>> await manager.add_user(user)
         """
-        if not self._running:
+        if not self._running or self._kv_userlist is None:
             return
 
         try:
@@ -638,7 +644,7 @@ class StateManager:
         Examples:
             >>> await manager.remove_user("Bob")
         """
-        if not self._running:
+        if not self._running or self._kv_userlist is None:
             return
 
         try:
@@ -666,7 +672,7 @@ class StateManager:
             >>> user = {"name": "Bob", "rank": 3}
             >>> await manager.update_user(user)
         """
-        if not self._running:
+        if not self._running or self._kv_userlist is None:
             return
 
         try:
@@ -746,7 +752,7 @@ class StateManager:
         """
         user = self._users.get(username)
         if user:
-            return user.get("profile", {})
+            return cast(dict[str, Any], user.get("profile", {}))
         return None
 
     def get_all_profiles(self) -> dict[str, dict[str, Any]]:
@@ -767,7 +773,7 @@ class StateManager:
                 profiles[username] = profile
         return profiles
 
-    def get_all_state(self) -> dict[str, list[dict[str, Any]]]:
+    def get_all_state(self) -> dict[str, Any]:
         """Get all channel state.
 
         Returns:
@@ -782,5 +788,3 @@ class StateManager:
 
 
 __all__ = ["StateManager"]
-
-

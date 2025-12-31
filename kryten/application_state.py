@@ -50,7 +50,7 @@ class ApplicationState:
         >>> uptime = time.time() - app_state.start_time
     """
 
-    def __init__(self, config_path: str, config: 'KrytenConfig'):
+    def __init__(self, config_path: str, config: "KrytenConfig"):
         """Initialize application state.
 
         Args:

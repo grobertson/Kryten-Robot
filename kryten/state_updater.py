@@ -84,6 +84,9 @@ class StateUpdater:
         if not self._state.is_running:
             raise RuntimeError("StateManager not started")
 
+        if self._nats._nc is None:
+            raise RuntimeError("NATS client internal connection is None")
+
         try:
             self._logger.info(f"Starting state updater for {self._domain}/{self._channel}")
 
@@ -176,6 +179,7 @@ class StateUpdater:
         """
         try:
             import json
+
             data = json.loads(msg.data.decode())
 
             # Extract playlist items from event payload
@@ -194,6 +198,7 @@ class StateUpdater:
         """
         try:
             import json
+
             data = json.loads(msg.data.decode())
             payload = data.get("payload", {})
 
@@ -213,6 +218,7 @@ class StateUpdater:
         """
         try:
             import json
+
             data = json.loads(msg.data.decode())
             payload = data.get("payload", {})
 
@@ -232,9 +238,10 @@ class StateUpdater:
         self._logger.info("DEBUG: _handle_move_video called")
         try:
             import json
+
             data = json.loads(msg.data.decode())
             payload = data.get("payload", {})
-            
+
             self._logger.info(f"DEBUG: moveVideo payload: {payload}")
 
             from_uid = payload.get("from")
@@ -256,6 +263,7 @@ class StateUpdater:
         """
         try:
             import json
+
             data = json.loads(msg.data.decode())
 
             # Extract users from event payload
@@ -274,6 +282,7 @@ class StateUpdater:
         """
         try:
             import json
+
             data = json.loads(msg.data.decode())
             payload = data.get("payload", {})
 
@@ -290,6 +299,7 @@ class StateUpdater:
         """
         try:
             import json
+
             data = json.loads(msg.data.decode())
             payload = data.get("payload", {})
 
@@ -308,6 +318,7 @@ class StateUpdater:
         """
         try:
             import json
+
             data = json.loads(msg.data.decode())
 
             # Extract emotes from event payload

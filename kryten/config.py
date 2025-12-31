@@ -213,9 +213,7 @@ def _validate_log_level(level: str) -> None:
     """
     if level not in VALID_LOG_LEVELS:
         valid_str = ", ".join(sorted(VALID_LOG_LEVELS))
-        raise ValueError(
-            f"Invalid log_level: '{level}'. Expected one of: {valid_str}"
-        )
+        raise ValueError(f"Invalid log_level: '{level}'. Expected one of: {valid_str}")
 
 
 def _load_cytube_config(data: dict) -> CytubeConfig:
@@ -471,7 +469,9 @@ def load_config(path: Path | str) -> KrytenConfig:
             logging_config = LoggingConfig(
                 base_path=logging_data.get("base_path", "./logs"),
                 admin_operations=logging_data.get("admin_operations", "admin-operations.log"),
-                playlist_operations=logging_data.get("playlist_operations", "playlist-operations.log"),
+                playlist_operations=logging_data.get(
+                    "playlist_operations", "playlist-operations.log"
+                ),
                 chat_messages=logging_data.get("chat_messages", "chat-messages.log"),
                 command_audit=logging_data.get("command_audit", "command-audit.log"),
             )

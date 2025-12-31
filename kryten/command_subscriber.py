@@ -8,6 +8,8 @@ import json
 import logging
 from typing import Any
 
+from nats.aio.subscription import Subscription
+
 from .cytube_event_sender import CytubeEventSender
 from .nats_client import NatsClient
 from .stats_tracker import StatsTracker
@@ -58,7 +60,7 @@ class CommandSubscriber:
         self._channel = channel
         self._audit_logger = audit_logger
         self._running = False
-        self._subscription = None
+        self._subscription: Subscription | None = None
 
         # Metrics tracking
         self._commands_processed = 0
@@ -164,10 +166,7 @@ class CommandSubscriber:
                 # Extract username from params if available
                 username = params.get("username") or params.get("name") or "system"
                 self._audit_logger.log_command(
-                    command=action,
-                    username=username,
-                    arguments=params,
-                    source="NATS"
+                    command=action, username=username, arguments=params, source="NATS"
                 )
 
             # Route to appropriate sender method
@@ -217,22 +216,29 @@ class CommandSubscriber:
                     media_type = params.get("type")
 
                     # If type is "cu" and id looks like a grindhouse view URL, transform it
-                    if media_type == "cu" and isinstance(media_id, str) and "420grindhouse.com/view?m=" in media_id:
+                    if (
+                        media_type == "cu"
+                        and isinstance(media_id, str)
+                        and "420grindhouse.com/view?m=" in media_id
+                    ):
                         # Transform to custom media format with JSON API URL
                         import re
-                        pattern = r'https?://(?:www\.)?420grindhouse\.com/view\?m=([A-Za-z0-9_-]+)'
+
+                        pattern = r"https?://(?:www\.)?420grindhouse\.com/view\?m=([A-Za-z0-9_-]+)"
                         match = re.match(pattern, media_id)
                         if match:
                             media_id_code = match.group(1)
                             media_id = f"https://www.420grindhouse.com/api/v1/media/cytube/{media_id_code}.json?format=json"
                             media_type = "cm"
-                            self._logger.info(f"Transformed grindhouse URL in command subscriber: type={media_type}, id={media_id}")
+                            self._logger.info(
+                                f"Transformed grindhouse URL in command subscriber: type={media_type}, id={media_id}"
+                            )
 
                     return await self._sender.add_video(
                         media_type=media_type,
                         media_id=media_id,
                         position=params.get("pos", "end"),
-                        temp=params.get("temp", False)
+                        temp=params.get("temp", False),
                     )
                 else:
                     # Old format: {"url": "yt:abc123", "position": "end", "temp": False}

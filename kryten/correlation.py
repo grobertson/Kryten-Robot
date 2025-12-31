@@ -38,12 +38,10 @@ Note:
 
 import logging
 import uuid
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 
 # Context-local storage for correlation ID (thread-safe, async-aware)
-_correlation_context: ContextVar[str | None] = ContextVar(
-    "correlation_id", default=None
-)
+_correlation_context: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
 
 def generate_correlation_id() -> str:
@@ -147,7 +145,7 @@ class CorrelationContext:
             correlation_id: Optional correlation ID. If None, generates new one.
         """
         self.correlation_id = correlation_id or generate_correlation_id()
-        self._token = None
+        self._token: Token | None = None
 
     def __enter__(self) -> str:
         """Enter context, setting correlation ID.

@@ -12,10 +12,10 @@ import logging
 import re
 from collections.abc import Callable
 from time import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from websockets.client import WebSocketClientProtocol
+    from websockets.legacy.client import WebSocketClientProtocol
 else:
     WebSocketClientProtocol = object
 
@@ -27,7 +27,9 @@ from websockets.exceptions import (
     InvalidHandshake,
     InvalidState,
     PayloadTooBig,
-    WebSocketProtocolError,
+)
+from websockets.exceptions import (
+    ProtocolError as WebSocketProtocolError,
 )
 
 # ============================================================================
@@ -73,8 +75,7 @@ async def default_get(url: str) -> str:
         import aiohttp
     except ImportError as ex:
         raise ImportError(
-            "aiohttp is required for HTTP polling. "
-            "Install with: pip install aiohttp"
+            "aiohttp is required for HTTP polling. " "Install with: pip install aiohttp"
         ) from ex
 
     async with aiohttp.ClientSession() as session:
@@ -96,10 +97,10 @@ def _current_task(loop: asyncio.AbstractEventLoop) -> asyncio.Task | None:
         Current task if available.
     """
     try:
-        return asyncio.current_task(loop)
+        return cast("asyncio.Task[Any] | None", asyncio.current_task(loop))
     except AttributeError:
         # Python 3.6 compatibility
-        return asyncio.Task.current_task(loop)  # type: ignore[attr-defined]
+        return cast("asyncio.Task[Any] | None", asyncio.Task.current_task(loop))  # type: ignore[attr-defined]
 
 
 # ============================================================================
@@ -190,9 +191,7 @@ class SocketIOResponse:
                 self.future.set_exception(ex)
 
     @staticmethod
-    def match_event(
-        ev: str | None = None, data: dict | None = None
-    ) -> Callable[[str, Any], bool]:
+    def match_event(ev: str | None = None, data: dict | None = None) -> Callable[[str, Any], bool]:
         """Create a matcher for specific event name and/or data.
 
         Parameters
@@ -404,9 +403,7 @@ class SocketIO:
 
             # Wait for tasks to finish
             self.logger.debug("waiting for task cancellation")
-            await asyncio.gather(
-                self.ping_task, self.recv_task, return_exceptions=True
-            )
+            await asyncio.gather(self.ping_task, self.recv_task, return_exceptions=True)
 
             # Clear ping state
             self.ping_response.clear()
@@ -456,7 +453,7 @@ class SocketIO:
             # Null sentinel indicates connection closed
             raise self.error or ConnectionClosed()
 
-        return ev
+        return cast(tuple[str, Any], ev)
 
     async def emit(
         self,
@@ -528,6 +525,8 @@ class SocketIO:
             if match_response is None:
                 return None
 
+            assert response is not None
+
             # Release lock before waiting
             self.response_lock.release()
             release = False
@@ -540,13 +539,13 @@ class SocketIO:
                     res = await response.future
 
                 self.logger.debug("response received: %r", res)
-                return res
+                return cast(tuple[str, Any], res)
 
             except asyncio.CancelledError:
                 self.logger.info("response cancelled for %s", event)
                 raise
 
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
                 self.logger.info("response timeout for %s", event)
                 response.cancel()
@@ -603,12 +602,18 @@ class SocketIO:
         except asyncio.CancelledError:
             self.logger.debug("ping task cancelled")
 
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
             self.logger.error("ping timeout")
             self.error = PingTimeout()
 
-        except (OSError, WebSocketConnectionClosed, InvalidState, PayloadTooBig, WebSocketProtocolError) as ex:
+        except (
+            OSError,
+            WebSocketConnectionClosed,
+            InvalidState,
+            PayloadTooBig,
+            WebSocketProtocolError,
+        ) as ex:
             self.logger.error("ping error: %r", ex)
             self.error = ConnectionClosed(str(ex))
 
@@ -624,6 +629,9 @@ class SocketIO:
                 # Receive raw frame
                 data = await self.websocket.recv()
                 self.logger.debug("recv: %s", data)
+
+                if isinstance(data, bytes):
+                    data = data.decode("utf-8")
 
                 # Parse Engine.IO frame type
                 if data.startswith("2"):
@@ -649,11 +657,15 @@ class SocketIO:
             if self.error is None:
                 self.error = ConnectionClosed()
 
-        except (OSError, WebSocketConnectionClosed, InvalidState, PayloadTooBig, WebSocketProtocolError) as ex:
+        except (
+            OSError,
+            WebSocketConnectionClosed,
+            InvalidState,
+            PayloadTooBig,
+            WebSocketProtocolError,
+        ) as ex:
             self.logger.warning(
-                "Connection closed: %s - %s",
-                type(ex).__name__,
-                str(ex) or "no details"
+                "Connection closed: %s - %s", type(ex).__name__, str(ex) or "no details"
             )
             self.error = ConnectionClosed(str(ex))
 
@@ -681,7 +693,9 @@ class SocketIO:
 
             elif packet_type == "1":
                 # Disconnect packet - server is closing the connection
-                self.logger.warning("Socket.IO disconnect packet received from server: %s", data[2:])
+                self.logger.warning(
+                    "Socket.IO disconnect packet received from server: %s", data[2:]
+                )
                 # Set error to trigger connection closure
                 self.error = ConnectionClosed("Server sent disconnect packet")
                 return  # Don't process further, connection is closing
@@ -757,7 +771,7 @@ class SocketIO:
                 raise ValueError(f"no sid in response: {config}")
 
             cls.logger.info("handshake sid=%s", config["sid"])
-            return config
+            return cast(dict, config)
 
         except (ValueError, json.JSONDecodeError) as ex:
             raise InvalidHandshake(f"invalid handshake response: {response}") from ex
@@ -817,9 +831,7 @@ class SocketIO:
             # Expect probe response
             response = await websocket.recv()
             if response != "3probe":
-                raise InvalidHandshake(
-                    f'invalid probe response: "{response}" != "3probe"'
-                )
+                raise InvalidHandshake(f'invalid probe response: "{response}" != "3probe"')
 
             # Send upgrade
             cls.logger.debug("sending upgrade")
@@ -897,9 +909,7 @@ class SocketIO:
                 raise
 
             except Exception as ex:
-                cls.logger.error(
-                    "connect(%s) attempt %d/%d: %r", url, attempt + 1, retry + 1, ex
-                )
+                cls.logger.error("connect(%s) attempt %d/%d: %r", url, attempt + 1, retry + 1, ex)
 
                 # Check if exceeded retry limit
                 if attempt == retry:

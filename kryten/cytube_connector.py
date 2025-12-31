@@ -55,7 +55,9 @@ class CytubeConnector:
         self._socket_factory = socket_factory or SocketIO.connect
         self._socket: SocketIO | None = None
         self._connected = False
-        self._user_rank: int = 0  # Track logged-in user's rank (0=guest, 1=registered, 2+=moderator/admin)
+        self._user_rank: int = (
+            0  # Track logged-in user's rank (0=guest, 1=registered, 2+=moderator/admin)
+        )
 
         # Connection tracking
         self._connected_since: float | None = None
@@ -127,8 +129,8 @@ class CytubeConnector:
             >>> assert 'events_processed' in stats
         """
         return {
-            'messages_received': self._messages_received,
-            'events_processed': self._events_processed,
+            "messages_received": self._messages_received,
+            "events_processed": self._events_processed,
         }
 
     async def emit(self, event: str, data: dict[str, Any]) -> None:
@@ -143,7 +145,7 @@ class CytubeConnector:
         """
         if not self._socket:
             raise NotConnectedError("Socket not connected")
-            
+
         await self._socket.emit(event, data)
 
     async def connect(self) -> None:
@@ -196,6 +198,7 @@ class CytubeConnector:
 
             # Track connection timing
             import time
+
             if self._connected_since is not None:
                 # This is a reconnection
                 self._reconnect_count += 1
@@ -306,7 +309,9 @@ class CytubeConnector:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(config_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.get(
+                    config_url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
                     response.raise_for_status()
                     data = await response.json()
 
@@ -360,17 +365,14 @@ class CytubeConnector:
         # CyTube sends 'needPassword' if password is wrong, or continues with channel data
         try:
             # Use a short timeout to see if we get immediate rejection
-            response = await asyncio.wait_for(
-                self._wait_for_channel_response(),
-                timeout=2.0
-            )
+            response = await asyncio.wait_for(self._wait_for_channel_response(), timeout=2.0)
 
             if response and response[0] == "needPassword":
                 raise AuthenticationError(
                     f"Invalid or missing password for channel: {self.config.channel}"
                 )
 
-        except (TimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
             # No immediate rejection means join was accepted
             pass
@@ -421,6 +423,9 @@ class CytubeConnector:
         Raises:
             AuthenticationError: If credentials are invalid.
         """
+        if self._socket is None:
+            raise NotConnectedError("Socket not connected")
+
         self.logger.debug(f"Authenticating as registered user: {self.config.user}")
 
         login_data = {
@@ -441,7 +446,9 @@ class CytubeConnector:
 
         # Check if login was successful
         if not isinstance(data, dict) or not data.get("success"):
-            error_msg = data.get("error", "Unknown error") if isinstance(data, dict) else "Login failed"
+            error_msg = (
+                data.get("error", "Unknown error") if isinstance(data, dict) else "Login failed"
+            )
             raise AuthenticationError(f"Login failed: {error_msg}")
 
         # Store user rank from login response
@@ -457,6 +464,9 @@ class CytubeConnector:
         Raises:
             AuthenticationError: If guest login fails after retries.
         """
+        if self._socket is None:
+            raise NotConnectedError("Socket not connected")
+
         guest_name = self.config.user or "Guest"
         self.logger.debug(f"Authenticating as guest: {guest_name}")
 
@@ -482,7 +492,9 @@ class CytubeConnector:
                 if data.get("success"):
                     # Store user rank from login response (guests typically have rank 0)
                     self._user_rank = data.get("rank", 0)
-                    self.logger.debug(f"Authenticated as guest: {guest_name} (rank: {self._user_rank})")
+                    self.logger.debug(
+                        f"Authenticated as guest: {guest_name} (rank: {self._user_rank})"
+                    )
                     return
 
                 # Check for rate limiting
@@ -556,7 +568,9 @@ class CytubeConnector:
                 await self._socket.emit("requestPlaylist", {})
                 self.logger.debug(f"Playlist request sent (rank: {self._user_rank})")
             else:
-                self.logger.debug(f"Skipping playlist request - insufficient permissions (rank: {self._user_rank}, need >= 2)")
+                self.logger.debug(
+                    f"Skipping playlist request - insufficient permissions (rank: {self._user_rank}, need >= 2)"
+                )
 
             # Request current media state (available to all users)
             # CyTube will respond with 'changeMedia' event
@@ -622,6 +636,7 @@ class CytubeConnector:
 
                     # Track last event time
                     import time
+
                     self._last_event_time = time.time()
 
                     # Try to queue event, drop oldest if full
@@ -633,7 +648,7 @@ class CytubeConnector:
                             self._event_queue.get_nowait()
                             self.logger.warning(
                                 "Event queue full, dropping oldest event",
-                                extra={"queue_size": self._event_queue.qsize()}
+                                extra={"queue_size": self._event_queue.qsize()},
                             )
                         except asyncio.QueueEmpty:
                             pass
@@ -653,8 +668,7 @@ class CytubeConnector:
                 except SocketIOConnectionClosed as e:
                     # Socket has been closed by server or network issue
                     self.logger.warning(
-                        f"Socket connection closed: {e}",
-                        extra={"was_connected": self._connected}
+                        f"Socket connection closed: {e}", extra={"was_connected": self._connected}
                     )
                     # Mark as disconnected so reconnection logic can kick in
                     self._connected = False
@@ -667,10 +681,12 @@ class CytubeConnector:
                     if self._socket and self._socket.error is not None:
                         self.logger.warning(
                             f"Socket entered error state: {self._socket.error}",
-                            extra={"last_event": e}
+                            extra={"last_event": e},
                         )
                         self._connected = False
-                        self._fire_callbacks("_connection_lost", {"reason": str(self._socket.error)})
+                        self._fire_callbacks(
+                            "_connection_lost", {"reason": str(self._socket.error)}
+                        )
                         break
 
                     self.logger.error(f"Error consuming socket event: {e}")
@@ -701,10 +717,7 @@ class CytubeConnector:
             try:
                 callback(event_name, payload)
             except Exception as e:
-                self.logger.error(
-                    f"Error in event callback for '{event_name}': {e}",
-                    exc_info=True
-                )
+                self.logger.error(f"Error in event callback for '{event_name}': {e}", exc_info=True)
 
     def on_event(self, event_name: str, callback: Callable[[str, dict], None]) -> None:
         """Register callback for specific event type.
@@ -775,13 +788,12 @@ class CytubeConnector:
                 try:
                     # Wait for event with timeout to check connection status
                     event_name, payload = await asyncio.wait_for(
-                        self._event_queue.get(),
-                        timeout=1.0
+                        self._event_queue.get(), timeout=1.0
                     )
                     self._events_processed += 1
                     yield event_name, payload
 
-                except (TimeoutError, asyncio.TimeoutError):
+                except TimeoutError:
                     # Python 3.10 compatibility: asyncio.TimeoutError is separate from TimeoutError
                     # In Python 3.11+, they are the same, but we need to catch both for 3.10
                     # No event received, check if still connected

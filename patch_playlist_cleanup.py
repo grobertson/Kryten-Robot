@@ -1,6 +1,3 @@
-
-import os
-
 file_path = r"d:\Devel\kryten-playlist\kryten_playlist\service.py"
 
 # The duplicated block
@@ -13,7 +10,7 @@ duplicate_block = """        uv_cfg = uvicorn.Config(
         )
         self._web_server = uvicorn.Server(uv_cfg)"""
 
-with open(file_path, "r", encoding="utf-8") as f:
+with open(file_path, encoding="utf-8") as f:
     content = f.read()
 
 # We expect to find this block twice. We want to remove one of them.
@@ -27,25 +24,25 @@ if count >= 2:
     # We can split by the block and join back, keeping only the first one
     # Or just replace the first occurrence with itself and the second with empty string?
     # Easier: find the index of the second occurrence.
-    
+
     first_idx = content.find(duplicate_block)
     second_idx = content.find(duplicate_block, first_idx + len(duplicate_block))
-    
+
     if second_idx != -1:
         # Construct new content: everything up to second_idx, then skip the block, then everything after
         # But we need to handle the newline/indentation potentially.
         # The block string above includes indentation but not leading/trailing newlines.
-        
+
         # Let's check if there's an extra newline between them.
         # In the file:
         # block 1
         # <newline>
         # block 2
-        
+
         # If we remove block 2, we might leave extra empty lines. That's fine.
-        
-        new_content = content[:second_idx] + content[second_idx + len(duplicate_block):]
-        
+
+        new_content = content[:second_idx] + content[second_idx + len(duplicate_block) :]
+
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(new_content)
         print("Successfully removed duplicate initialization.")

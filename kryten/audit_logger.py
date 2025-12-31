@@ -56,7 +56,9 @@ class AuditLogger:
         # Connection logger is optional for backward compatibility
         self.connection_logger: logging.Logger | None = None
         if "connection_events" in filenames:
-            self.connection_logger = self._create_logger("connection", filenames["connection_events"])
+            self.connection_logger = self._create_logger(
+                "connection", filenames["connection_events"]
+            )
 
     def _create_logger(self, name: str, filename: str) -> logging.Logger:
         """Create a specialized logger with file handler.
@@ -78,11 +80,11 @@ class AuditLogger:
 
         # Create file handler with UTF-8 encoding
         log_path = self.base_path / filename
-        handler = logging.FileHandler(log_path, mode='a', encoding='utf-8')
+        handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
         handler.setLevel(logging.INFO)
 
         # Simple format: timestamp + message
-        formatter = logging.Formatter('%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        formatter = logging.Formatter("%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
         handler.setFormatter(formatter)
 
         logger.addHandler(handler)
@@ -94,7 +96,7 @@ class AuditLogger:
         operation: str,
         username: str | None = None,
         target: str | None = None,
-        details: dict[str, Any] | None = None
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Log an admin operation.
 
@@ -124,7 +126,7 @@ class AuditLogger:
         operation: str,
         username: str | None = None,
         media_title: str | None = None,
-        details: dict[str, Any] | None = None
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Log a playlist operation.
 
@@ -143,7 +145,7 @@ class AuditLogger:
         if media_title:
             # Truncate long titles
             title = media_title[:100]
-            parts.append(f"title=\"{title}\"")
+            parts.append(f'title="{title}"')
         if details:
             detail_str = " ".join(f"{k}={v}" for k, v in details.items())
             parts.append(detail_str)
@@ -151,7 +153,9 @@ class AuditLogger:
         message = " ".join(parts)
         self.playlist_logger.info(message)
 
-    def log_chat_message(self, username: str, message: str, timestamp: datetime | None = None) -> None:
+    def log_chat_message(
+        self, username: str, message: str, timestamp: datetime | None = None
+    ) -> None:
         """Log a chat message in IRC-style format.
 
         Args:
@@ -178,8 +182,8 @@ class AuditLogger:
 
         # Add handler without timestamp
         log_path = self.base_path / self.filenames["chat_messages"]
-        handler = logging.FileHandler(log_path, mode='a', encoding='utf-8')
-        formatter = logging.Formatter('%(message)s')
+        handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+        formatter = logging.Formatter("%(message)s")
         handler.setFormatter(formatter)
         self.chat_logger.addHandler(handler)
 
@@ -194,7 +198,7 @@ class AuditLogger:
         command: str,
         username: str | None = None,
         arguments: dict[str, Any] | None = None,
-        source: str = "NATS"
+        source: str = "NATS",
     ) -> None:
         """Log a received command.
 
@@ -224,7 +228,7 @@ class AuditLogger:
         event: str,
         target: str | None = None,
         details: dict[str, Any] | None = None,
-        error: str | None = None
+        error: str | None = None,
     ) -> None:
         """Log a connection event.
 
@@ -248,7 +252,7 @@ class AuditLogger:
             detail_str = " ".join(f"{k}={v}" for k, v in details.items())
             parts.append(detail_str)
         if error:
-            parts.append(f"error=\"{error}\"")
+            parts.append(f'error="{error}"')
 
         message = " ".join(parts)
         self.connection_logger.info(message)

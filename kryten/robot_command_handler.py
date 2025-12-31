@@ -9,8 +9,10 @@ Handles system commands on the kryten.robot.command subject, including:
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
+
+from nats.aio.subscription import Subscription
 
 from .nats_client import NatsClient
 
@@ -50,16 +52,14 @@ class RobotCommandHandler:
         self.cmd_subscriber = cmd_subscriber
         self.sender = sender
 
-        self._subscription = None
+        self._subscription: Subscription | None = None
         self._commands_processed = 0
 
     async def start(self) -> None:
         """Subscribe to command subject."""
         # New style subject: kryten.robot.command
-        subject = "kryten.robot.command" 
-        self._subscription = await self.nats.subscribe_request_reply(
-            subject, self._handle_command
-        )
+        subject = "kryten.robot.command"
+        self._subscription = await self.nats.subscribe_request_reply(subject, self._handle_command)
         self.logger.info(f"Robot command handler subscribed to {subject}")
 
     async def stop(self) -> None:
@@ -82,21 +82,27 @@ class RobotCommandHandler:
             command = request.get("command", "")
 
             if not command:
-                await self._send_response(msg.reply, {
-                    "service": "robot",
-                    "success": False,
-                    "error": "Missing 'command' field",
-                })
+                await self._send_response(
+                    msg.reply,
+                    {
+                        "service": "robot",
+                        "success": False,
+                        "error": "Missing 'command' field",
+                    },
+                )
                 return
 
             # Check service routing
             service = request.get("service")
             if service and service not in ("robot", "system"):
-                await self._send_response(msg.reply, {
-                    "service": "robot",
-                    "success": False,
-                    "error": f"Command intended for '{service}', not 'robot'",
-                })
+                await self._send_response(
+                    msg.reply,
+                    {
+                        "service": "robot",
+                        "success": False,
+                        "error": f"Command intended for '{service}', not 'robot'",
+                    },
+                )
                 return
 
             # Dispatch command
@@ -117,7 +123,7 @@ class RobotCommandHandler:
                 "smute": self._handle_smute,
                 "kick": self._handle_kick,
                 "ban": self._handle_ban,
-                "unkick": self._handle_unkick, # Note: Cytube doesn't have unkick, but unban. 
+                "unkick": self._handle_unkick,  # Note: Cytube doesn't have unkick, but unban.
                 # Playlist commands
                 "addvideo": self._handle_add_video,
                 "rmvideo": self._handle_delete_video,
@@ -146,27 +152,36 @@ class RobotCommandHandler:
             else:
                 result = await handler(args)
 
-            await self._send_response(msg.reply, {
-                "service": "robot",
-                "command": command,
-                "success": True,
-                "data": result,
-            })
+            await self._send_response(
+                msg.reply,
+                {
+                    "service": "robot",
+                    "command": command,
+                    "success": True,
+                    "data": result,
+                },
+            )
 
         except json.JSONDecodeError as e:
             self.logger.error(f"Invalid JSON in command: {e}")
-            await self._send_response(msg.reply, {
-                "service": "robot",
-                "success": False,
-                "error": f"Invalid JSON: {e}",
-            })
+            await self._send_response(
+                msg.reply,
+                {
+                    "service": "robot",
+                    "success": False,
+                    "error": f"Invalid JSON: {e}",
+                },
+            )
         except Exception as e:
             self.logger.error(f"Error handling command: {e}", exc_info=True)
-            await self._send_response(msg.reply, {
-                "service": "robot",
-                "success": False,
-                "error": str(e),
-            })
+            await self._send_response(
+                msg.reply,
+                {
+                    "service": "robot",
+                    "success": False,
+                    "error": str(e),
+                },
+            )
 
     async def _handle_restart(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle restart command."""
@@ -174,23 +189,23 @@ class RobotCommandHandler:
         # In a real service, this might trigger a graceful shutdown/restart
         # For now, we'll just log it and potentially trigger a reconnect
         if self.connector:
-             await self.connector.disconnect()
-             # The watchdog or main loop should handle reconnection
+            await self.connector.disconnect()
+            # The watchdog or main loop should handle reconnection
         return {"message": "Restarting connection"}
 
     async def _handle_halt(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle halt command."""
         self.logger.info("Halt command received")
         if self.connector:
-             await self.connector.disconnect()
+            await self.connector.disconnect()
         return {"message": "Halting connection"}
 
     async def _handle_reconnect(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle reconnect command."""
         self.logger.info("Reconnect command received")
         if self.connector:
-             await self.connector.disconnect()
-             # Watchdog will pick it up
+            await self.connector.disconnect()
+            # Watchdog will pick it up
         return {"message": "Reconnecting"}
 
     async def _handle_say(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -198,19 +213,19 @@ class RobotCommandHandler:
         message = args.get("message") or args.get("msg")
         if not message:
             raise ValueError("Missing message")
-        
+
         if self.sender:
             await self.sender.send_chat(message)
             return {"success": True}
-        
+
         if self.connector:
             # Fallback if sender not provided but connector is (though connector doesn't have send_chat directly usually)
             # Keeping for compatibility if connector was patched, but preferably use sender
-             try:
-                 await self.connector.send_chat(message)
-                 return {"success": True}
-             except AttributeError:
-                 pass
+            try:
+                await self.connector.send_chat(message)
+                return {"success": True}
+            except AttributeError:
+                pass
 
         raise RuntimeError("Not connected or sender not available")
 
@@ -218,9 +233,9 @@ class RobotCommandHandler:
         """Handle PM command."""
         username = args.get("username") or args.get("to")
         message = args.get("message") or args.get("msg")
-        
+
         if not username or not message:
-             raise ValueError("Missing username or message")
+            raise ValueError("Missing username or message")
 
         if self.sender:
             await self.sender.send_pm(username, message)
@@ -243,60 +258,60 @@ class RobotCommandHandler:
 
         username = args.get("username") or args.get("name")
         if not username:
-             raise ValueError("Missing username")
-        
+            raise ValueError("Missing username")
+
         success = await self.sender.mute_user(username)
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to mute user"}
 
     async def _handle_smute(self, args: dict[str, Any]) -> dict[str, Any]:
-         """Handle shadow mute command."""
-         if not self.sender:
+        """Handle shadow mute command."""
+        if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
 
-         username = args.get("username") or args.get("name")
-         if not username:
-             raise ValueError("Missing username")
+        username = args.get("username") or args.get("name")
+        if not username:
+            raise ValueError("Missing username")
 
-         success = await self.sender.shadow_mute_user(username)
-         if success:
-             return {"success": True}
-         return {"success": False, "error": "Failed to shadow mute user"}
+        success = await self.sender.shadow_mute_user(username)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to shadow mute user"}
 
     async def _handle_kick(self, args: dict[str, Any]) -> dict[str, Any]:
-         """Handle kick command."""
-         if not self.sender:
+        """Handle kick command."""
+        if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
 
-         username = args.get("username") or args.get("name")
-         reason = args.get("reason", "")
-         if not username:
-             raise ValueError("Missing username")
+        username = args.get("username") or args.get("name")
+        reason = args.get("reason", "")
+        if not username:
+            raise ValueError("Missing username")
 
-         success = await self.sender.kick_user(username, reason)
-         if success:
-             return {"success": True}
-         return {"success": False, "error": "Failed to kick user"}
+        success = await self.sender.kick_user(username, reason)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to kick user"}
 
     async def _handle_ban(self, args: dict[str, Any]) -> dict[str, Any]:
-         """Handle ban command."""
-         if not self.sender:
+        """Handle ban command."""
+        if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
 
-         username = args.get("username") or args.get("name")
-         reason = args.get("reason", "")
-         if not username:
-             raise ValueError("Missing username")
+        username = args.get("username") or args.get("name")
+        reason = args.get("reason", "")
+        if not username:
+            raise ValueError("Missing username")
 
-         success = await self.sender.ban_user(username, reason)
-         if success:
-             return {"success": True}
-         return {"success": False, "error": "Failed to ban user"}
+        success = await self.sender.ban_user(username, reason)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to ban user"}
 
     async def _handle_unkick(self, args: dict[str, Any]) -> dict[str, Any]:
-         """Handle unkick/unban command."""
-         return {"error": "Not implemented in handler yet"}
+        """Handle unkick/unban command."""
+        return {"error": "Not implemented in handler yet"}
 
     async def _handle_add_video(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle add video command."""
@@ -306,31 +321,31 @@ class RobotCommandHandler:
         # Map args to add_video parameters
         # args might contain: type, id, pos, temp OR url
         # client.py sends: type, id, pos, temp
-        
+
         success = await self.sender.add_video(
             url=args.get("url"),
             media_type=args.get("type"),
             media_id=args.get("id"),
             position=args.get("pos", "end"),
-            temp=args.get("temp", True)
+            temp=args.get("temp", True),
         )
-        
+
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to add video"}
 
     async def _handle_delete_video(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle delete video command."""
         if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
-            
+
         uid = args.get("uid")
         if uid is None:
-             raise ValueError("Missing uid")
+            raise ValueError("Missing uid")
 
         success = await self.sender.delete_video(uid)
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to delete video"}
 
     async def _handle_move_video(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -341,13 +356,13 @@ class RobotCommandHandler:
         # client.py sends: from, after
         uid = args.get("from")
         after = args.get("after")
-        
+
         if uid is None or after is None:
-             raise ValueError("Missing 'from' or 'after'")
+            raise ValueError("Missing 'from' or 'after'")
 
         success = await self.sender.move_video(uid, after)
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to move video"}
 
     async def _handle_jump(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -357,11 +372,11 @@ class RobotCommandHandler:
 
         uid = args.get("uid")
         if uid is None:
-             raise ValueError("Missing uid")
+            raise ValueError("Missing uid")
 
         success = await self.sender.jump_to(uid)
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to jump to video"}
 
     async def _handle_clear(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -371,7 +386,7 @@ class RobotCommandHandler:
 
         success = await self.sender.clear_playlist()
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to clear playlist"}
 
     async def _handle_shuffle(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -381,7 +396,7 @@ class RobotCommandHandler:
 
         success = await self.sender.shuffle_playlist()
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to shuffle playlist"}
 
     async def _handle_set_temp(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -391,13 +406,13 @@ class RobotCommandHandler:
 
         uid = args.get("uid")
         temp = args.get("temp")
-        
+
         if uid is None or temp is None:
-             raise ValueError("Missing uid or temp")
+            raise ValueError("Missing uid or temp")
 
         success = await self.sender.set_temp(uid, temp)
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to set temp"}
 
     async def _handle_pause(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -407,7 +422,7 @@ class RobotCommandHandler:
 
         success = await self.sender.pause()
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to pause"}
 
     async def _handle_play(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -417,7 +432,7 @@ class RobotCommandHandler:
 
         success = await self.sender.play()
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to play"}
 
     async def _handle_seek(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -427,11 +442,11 @@ class RobotCommandHandler:
 
         time_val = args.get("time")
         if time_val is None:
-             raise ValueError("Missing time")
+            raise ValueError("Missing time")
 
         success = await self.sender.seek_to(time_val)
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to seek"}
 
     async def _handle_voteskip(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -441,7 +456,7 @@ class RobotCommandHandler:
 
         success = await self.sender.voteskip()
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to voteskip"}
 
     async def _handle_assign_leader(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -452,9 +467,8 @@ class RobotCommandHandler:
         name = args.get("name", "")
         success = await self.sender.assign_leader(name)
         if success:
-             return {"success": True}
+            return {"success": True}
         return {"success": False, "error": "Failed to assign leader"}
-
 
     async def _send_response(self, reply_to: str | None, response: dict) -> None:
         """Send response to reply subject.
@@ -479,7 +493,7 @@ class RobotCommandHandler:
             "service": "robot",
             "version": self.version,
             "uptime_seconds": uptime_seconds,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         # Add metrics endpoint if health is enabled
@@ -545,10 +559,7 @@ class RobotCommandHandler:
             raise RuntimeError("CytubeConnector not connected")
 
         # CyTube expects: { "from": uid, "after": uid }
-        await self.connector.emit("moveVideo", {
-            "from": from_uid,
-            "after": after_uid
-        })
+        await self.connector.emit("moveVideo", {"from": from_uid, "after": after_uid})
 
         self.logger.info(f"Sent moveVideo command: {from_uid} after {after_uid}")
         return {"status": "sent", "from_uid": from_uid, "after_uid": after_uid}
@@ -580,7 +591,6 @@ class RobotCommandHandler:
 
         await self.connector.emit("delete", {"uid": uid})
         return {"status": "sent", "uid": uid}
-
 
     async def _handle_stats(self, request: dict) -> dict:
         """Handle system.stats - Service statistics."""

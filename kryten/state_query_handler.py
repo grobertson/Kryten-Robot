@@ -10,13 +10,17 @@ Commands are dispatched based on the 'command' field in the request.
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     import psutil
+
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
+
+from nats.aio.subscription import Subscription
 
 from .application_state import ApplicationState
 from .nats_client import NatsClient
@@ -81,7 +85,7 @@ class StateQueryHandler:
         self._channel = channel
         self._app_state = app_state
         self._running = False
-        self._subscription = None
+        self._subscription: Subscription | None = None
 
         # Metrics
         self._queries_processed = 0
@@ -113,8 +117,7 @@ class StateQueryHandler:
 
         try:
             self._subscription = await self._nats.subscribe_request_reply(
-                subject,
-                callback=self._handle_command_msg
+                subject, callback=self._handle_command_msg
             )
             self._logger.info(f"State query handler listening on: {subject}")
 
@@ -151,17 +154,17 @@ class StateQueryHandler:
             request = {}
             if msg.data:
                 try:
-                    request = json.loads(msg.data.decode('utf-8'))
+                    request = json.loads(msg.data.decode("utf-8"))
                 except json.JSONDecodeError as e:
                     raise ValueError(f"Invalid JSON: {e}") from e
 
-            command = request.get('command')
+            command = request.get("command")
             if not command:
                 raise ValueError("Missing 'command' field")
 
             # Check service field for routing (other services can ignore)
-            service = request.get('service')
-            if service and service != 'robot':
+            service = request.get("service")
+            if service and service != "robot":
                 # Not for us, ignore silently
                 return
 
@@ -193,16 +196,11 @@ class StateQueryHandler:
             result = await handler(request)
 
             # Build success response
-            response = {
-                "service": "robot",
-                "command": command,
-                "success": True,
-                "data": result
-            }
+            response = {"service": "robot", "command": command, "success": True, "data": result}
 
             # Send response
             if msg.reply:
-                response_bytes = json.dumps(response).encode('utf-8')
+                response_bytes = json.dumps(response).encode("utf-8")
                 await self._nats.publish(msg.reply, response_bytes)
                 self._logger.debug(f"Sent response for command '{command}'")
 
@@ -215,14 +213,14 @@ class StateQueryHandler:
             # Send error response if reply subject provided
             if msg.reply:
                 try:
-                    command = request.get('command', 'unknown')
+                    command = request.get("command", "unknown")
                     error_response = {
                         "service": "robot",
                         "command": command,
                         "success": False,
-                        "error": str(e)
+                        "error": str(e),
                     }
-                    response_bytes = json.dumps(error_response).encode('utf-8')
+                    response_bytes = json.dumps(error_response).encode("utf-8")
                     await self._nats.publish(msg.reply, response_bytes)
                 except Exception as reply_error:
                     self._logger.error(f"Failed to send error response: {reply_error}")
@@ -245,18 +243,18 @@ class StateQueryHandler:
             "emotes": self._state_manager.get_emotes(),
             "playlist": self._state_manager.get_playlist(),
             "userlist": self._state_manager.get_userlist(),
-            "stats": self._state_manager.stats
+            "stats": self._state_manager.stats,
         }
 
     async def _handle_state_user(self, request: dict) -> dict:
         """Get specific user info."""
-        username = request.get('username')
+        username = request.get("username")
         if not username:
             raise ValueError("username required")
 
         return {
             "user": self._state_manager.get_user(username),
-            "profile": self._state_manager.get_user_profile(username)
+            "profile": self._state_manager.get_user_profile(username),
         }
 
     async def _handle_state_profiles(self, request: dict) -> dict:
@@ -290,7 +288,7 @@ class StateQueryHandler:
                 {
                     "domain": self._domain,
                     "channel": self._channel,
-                    "connected": self._nats.is_connected
+                    "connected": self._nats.is_connected,
                 }
             ]
         }
@@ -306,9 +304,7 @@ class StateQueryHandler:
         """
         from . import __version__
 
-        return {
-            "version": __version__
-        }
+        return {"version": __version__}
 
     async def _handle_system_stats(self, request: dict) -> dict:
         """Get comprehensive runtime statistics.
@@ -336,72 +332,93 @@ class StateQueryHandler:
         events_stats = {}
         if self._app_state.event_publisher:
             pub_stats = self._app_state.event_publisher.stats
-            last_time = pub_stats.get('last_event_time')
-            last_type = pub_stats.get('last_event_type')
+            last_time = pub_stats.get("last_event_time")
+            last_type = pub_stats.get("last_event_type")
             events_stats = {
-                "total_published": pub_stats.get('events_published', 0),
-                "failed": pub_stats.get('publish_errors', 0),
-                "rate_1min": pub_stats.get('rate_1min', 0.0),
-                "rate_5min": pub_stats.get('rate_5min', 0.0),
-                "last_event_time": datetime.fromtimestamp(last_time, tz=timezone.utc).isoformat() if last_time else None,
-                "last_event_type": last_type
+                "total_published": pub_stats.get("events_published", 0),
+                "failed": pub_stats.get("publish_errors", 0),
+                "rate_1min": pub_stats.get("rate_1min", 0.0),
+                "rate_5min": pub_stats.get("rate_5min", 0.0),
+                "last_event_time": (
+                    datetime.fromtimestamp(last_time, tz=UTC).isoformat() if last_time else None
+                ),
+                "last_event_type": last_type,
             }
 
         # Get command subscriber stats
         commands_stats = {}
         if self._app_state.command_subscriber:
             cmd_stats = self._app_state.command_subscriber.stats
-            last_time = cmd_stats.get('last_command_time')
-            last_type = cmd_stats.get('last_command_type')
+            last_time = cmd_stats.get("last_command_time")
+            last_type = cmd_stats.get("last_command_type")
             commands_stats = {
-                "total_received": cmd_stats.get('commands_processed', 0),
-                "succeeded": cmd_stats.get('commands_succeeded', 0),
-                "failed": cmd_stats.get('commands_failed', 0),
-                "rate_1min": cmd_stats.get('rate_1min', 0.0),
-                "rate_5min": cmd_stats.get('rate_5min', 0.0),
-                "last_command_time": datetime.fromtimestamp(last_time, tz=timezone.utc).isoformat() if last_time else None,
-                "last_command_type": last_type
+                "total_received": cmd_stats.get("commands_processed", 0),
+                "succeeded": cmd_stats.get("commands_succeeded", 0),
+                "failed": cmd_stats.get("commands_failed", 0),
+                "rate_1min": cmd_stats.get("rate_1min", 0.0),
+                "rate_5min": cmd_stats.get("rate_5min", 0.0),
+                "last_command_time": (
+                    datetime.fromtimestamp(last_time, tz=UTC).isoformat() if last_time else None
+                ),
+                "last_command_type": last_type,
             }
 
         # Get query handler stats (self)
         queries_stats = {
             "processed": self._queries_processed,
             "failed": self._queries_failed,
-            "rate_1min": 0.0  # Could add StatsTracker here too if needed
+            "rate_1min": 0.0,  # Could add StatsTracker here too if needed
         }
 
         # Get connection stats
         connections_stats = {}
 
         # CyTube connection
-        cytube_stats = {"connected": False, "connected_since": None, "last_event_time": None, "reconnect_count": 0}
+        cytube_stats: dict[str, Any] = {
+            "connected": False,
+            "connected_since": None,
+            "last_event_time": None,
+            "reconnect_count": 0,
+        }
         if self._app_state.connector:
             connector = self._app_state.connector
             connected_since = connector.connected_since
             last_event = connector.last_event_time
             cytube_stats = {
                 "connected": connector.is_connected,
-                "connected_since": datetime.fromtimestamp(connected_since, tz=timezone.utc).isoformat() if connected_since else None,
-                "last_event_time": datetime.fromtimestamp(last_event, tz=timezone.utc).isoformat() if last_event else None,
-                "reconnect_count": connector.reconnect_count
+                "connected_since": (
+                    datetime.fromtimestamp(connected_since, tz=UTC).isoformat()
+                    if connected_since
+                    else None
+                ),
+                "last_event_time": (
+                    datetime.fromtimestamp(last_event, tz=UTC).isoformat() if last_event else None
+                ),
+                "reconnect_count": connector.reconnect_count,
             }
 
         # NATS connection
-        nats_stats = {"connected": False, "connected_since": None, "connected_url": None, "reconnect_count": 0}
+        nats_stats: dict[str, Any] = {
+            "connected": False,
+            "connected_since": None,
+            "connected_url": None,
+            "reconnect_count": 0,
+        }
         if self._app_state.nats_client:
             nats = self._app_state.nats_client
             connected_since = nats.connected_since
             nats_stats = {
                 "connected": nats.is_connected,
-                "connected_since": datetime.fromtimestamp(connected_since, tz=timezone.utc).isoformat() if connected_since else None,
+                "connected_since": (
+                    datetime.fromtimestamp(connected_since, tz=UTC).isoformat()
+                    if connected_since
+                    else None
+                ),
                 "connected_url": nats.connected_url,
-                "reconnect_count": nats.reconnect_count
+                "reconnect_count": nats.reconnect_count,
             }
 
-        connections_stats = {
-            "cytube": cytube_stats,
-            "nats": nats_stats
-        }
+        connections_stats = {"cytube": cytube_stats, "nats": nats_stats}
 
         # Get state counts
         state_stats = {}
@@ -410,7 +427,7 @@ class StateQueryHandler:
             state_stats = {
                 "users": sm.users_count(),
                 "playlist": sm.playlist_count(),
-                "emotes": sm.emotes_count()
+                "emotes": sm.emotes_count(),
             }
 
         # Get memory stats (if psutil available)
@@ -421,7 +438,7 @@ class StateQueryHandler:
                 mem_info = process.memory_info()
                 memory_stats = {
                     "rss_mb": mem_info.rss / (1024 * 1024),
-                    "vms_mb": mem_info.vms / (1024 * 1024)
+                    "vms_mb": mem_info.vms / (1024 * 1024),
                 }
             except Exception as e:
                 self._logger.warning(f"Failed to get memory stats: {e}")
@@ -436,7 +453,7 @@ class StateQueryHandler:
             "queries": queries_stats,
             "connections": connections_stats,
             "state": state_stats,
-            "memory": memory_stats
+            "memory": memory_stats,
         }
 
     async def _handle_system_services(self, request: dict) -> dict:
@@ -469,24 +486,20 @@ class StateQueryHandler:
 
         registry = self._app_state.service_registry
         services = registry.get_all_services()
-        
+
         service_list = []
         active_count = 0
-        
+
         for service in services:
             service_dict = service.to_dict()
             service_list.append(service_dict)
             if not service.is_stale:
                 active_count += 1
-        
+
         # Sort by name for consistent ordering
         service_list.sort(key=lambda s: s["name"])
-        
-        return {
-            "services": service_list,
-            "count": len(service_list),
-            "active_count": active_count
-        }
+
+        return {"services": service_list, "count": len(service_list), "active_count": active_count}
 
     async def _handle_system_config(self, request: dict) -> dict:
         """Get current effective configuration.
@@ -508,31 +521,29 @@ class StateQueryHandler:
                 "domain": config.cytube.domain,
                 "channel": config.cytube.channel,
                 "user": config.cytube.user,
-                "password": "***REDACTED***"
+                "password": "***REDACTED***",
             },
             "nats": {
                 "servers": config.nats.servers,
                 "user": config.nats.user,
                 "password": "***REDACTED***" if config.nats.password else None,
                 "max_reconnect_attempts": config.nats.max_reconnect_attempts,
-                "reconnect_time_wait": config.nats.reconnect_time_wait
+                "reconnect_time_wait": config.nats.reconnect_time_wait,
             },
             "health": {
                 "enabled": config.health.enabled,
                 "host": config.health.host,
-                "port": config.health.port
+                "port": config.health.port,
             },
-            "commands": {
-                "enabled": config.commands.enabled
-            },
+            "commands": {"enabled": config.commands.enabled},
             "logging": {
                 "base_path": config.logging.base_path,
                 "admin_operations": config.logging.admin_operations,
                 "playlist_operations": config.logging.playlist_operations,
                 "chat_messages": config.logging.chat_messages,
-                "command_audit": config.logging.command_audit
+                "command_audit": config.logging.command_audit,
             },
-            "log_level": config.log_level
+            "log_level": config.log_level,
         }
 
     async def _handle_system_ping(self, request: dict) -> dict:
@@ -550,10 +561,10 @@ class StateQueryHandler:
 
         return {
             "pong": True,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "uptime_seconds": uptime,
             "service": "robot",
-            "version": __version__
+            "version": __version__,
         }
 
     async def _handle_system_shutdown(self, request: dict) -> dict:
@@ -576,11 +587,12 @@ class StateQueryHandler:
         Raises:
             ValueError: If delay is invalid or ApplicationState not available
         """
-        if not self._app_state:
+        app_state = self._app_state
+        if not app_state:
             raise ValueError("ApplicationState not available for shutdown")
 
         # Parse and validate delay
-        delay_seconds = request.get('delay_seconds', 0)
+        delay_seconds = request.get("delay_seconds", 0)
 
         # Convert to int/float if needed
         try:
@@ -593,11 +605,11 @@ class StateQueryHandler:
             raise ValueError("delay_seconds must be between 0 and 300")
 
         delay_seconds = int(delay_seconds)
-        reason = request.get('reason', 'Remote shutdown via system.shutdown')
+        reason = request.get("reason", "Remote shutdown via system.shutdown")
 
         # Calculate shutdown time
-        shutdown_time = datetime.now(timezone.utc).timestamp() + delay_seconds
-        shutdown_time_iso = datetime.fromtimestamp(shutdown_time, tz=timezone.utc).isoformat()
+        shutdown_time = datetime.now(UTC).timestamp() + delay_seconds
+        shutdown_time_iso = datetime.fromtimestamp(shutdown_time, tz=UTC).isoformat()
 
         # Log the shutdown request
         self._logger.warning(
@@ -613,7 +625,7 @@ class StateQueryHandler:
                 await asyncio.sleep(delay_seconds)
 
             self._logger.warning(f"Triggering shutdown: {reason}")
-            self._app_state.shutdown_event.set()
+            app_state.shutdown_event.set()
 
         # Create task to handle shutdown (non-blocking)
         asyncio.create_task(trigger_shutdown())
@@ -623,7 +635,7 @@ class StateQueryHandler:
             "message": "Shutdown initiated",
             "delay_seconds": delay_seconds,
             "shutdown_time": shutdown_time_iso,
-            "reason": reason
+            "reason": reason,
         }
 
     async def _handle_system_reload(self, request: dict) -> dict:
@@ -659,7 +671,7 @@ class StateQueryHandler:
         from .config import load_config
 
         # Determine config path
-        config_path = request.get('config_path', self._app_state.config_path)
+        config_path = request.get("config_path", self._app_state.config_path)
 
         try:
             # Load new configuration
@@ -688,7 +700,7 @@ class StateQueryHandler:
                     "success": False,
                     "message": "Configuration validation failed",
                     "changes": {},
-                    "errors": errors
+                    "errors": errors,
                 }
 
             # Apply safe changes
@@ -706,8 +718,10 @@ class StateQueryHandler:
                     self._logger.info(f"Updated log level to {new_level}")
 
             # 2. NATS credentials (will apply on next reconnect)
-            if (new_config.nats.user != old_config.nats.user or
-                new_config.nats.password != old_config.nats.password):
+            if (
+                new_config.nats.user != old_config.nats.user
+                or new_config.nats.password != old_config.nats.password
+            ):
                 changes["nats.credentials"] = "updated (will apply on next reconnect)"
 
             # 3. NATS servers
@@ -723,7 +737,7 @@ class StateQueryHandler:
                 "success": True,
                 "message": "Configuration reloaded successfully",
                 "changes": changes,
-                "errors": []
+                "errors": [],
             }
 
         except FileNotFoundError:
@@ -733,7 +747,7 @@ class StateQueryHandler:
                 "success": False,
                 "message": "Configuration reload failed",
                 "changes": {},
-                "errors": [error_msg]
+                "errors": [error_msg],
             }
 
         except Exception as e:
@@ -743,7 +757,7 @@ class StateQueryHandler:
                 "success": False,
                 "message": "Configuration reload failed",
                 "changes": {},
-                "errors": [error_msg]
+                "errors": [error_msg],
             }
 
 

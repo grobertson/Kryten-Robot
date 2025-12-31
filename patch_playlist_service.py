@@ -1,6 +1,3 @@
-
-import os
-
 file_path = r"d:\Devel\kryten-playlist\kryten_playlist\service.py"
 
 old_str = """        if self._catalog_refresh_task is not None:
@@ -21,7 +18,7 @@ new_str = """        if self._catalog_refresh_task is not None:
                 logger.error(f"Error waiting for catalog refresh task: {e}")
             logger.debug("Catalog refresh task cancelled")"""
 
-with open(file_path, "r", encoding="utf-8") as f:
+with open(file_path, encoding="utf-8") as f:
     content = f.read()
 
 if old_str in content:

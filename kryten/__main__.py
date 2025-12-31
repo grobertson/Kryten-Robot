@@ -21,11 +21,11 @@ Exit Codes:
 
 import argparse
 import asyncio
-import json
 import logging
 import signal
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 from . import (
     CommandSubscriber,
@@ -71,7 +71,7 @@ def print_startup_banner(config_path: str) -> None:
             event_name="chatMsg",
             payload={},
             channel=config.cytube.channel,
-            domain=config.cytube.domain
+            domain=config.cytube.domain,
         )
         event_subject = build_event_subject(example_event)
         # Build command subject base without wildcards (normalized channel removes special chars)
@@ -138,8 +138,9 @@ async def main(config_path: str) -> int:
         Signal handlers must not perform async operations directly.
         """
         signame = signal.Signals(signum).name
-        if logger:
-            logger.info(f"Received {signame}, initiating graceful shutdown")
+        sig_logger = logger
+        if sig_logger:
+            sig_logger.info(f"Received {signame}, initiating graceful shutdown")
         else:
             print(f"\nReceived {signame}, initiating graceful shutdown...")
         if app_state:
@@ -156,12 +157,13 @@ async def main(config_path: str) -> int:
         logging_config = LoggingConfig(
             level=config.log_level,
             format="text",  # Text format for console readability
-            output="console"
+            output="console",
         )
         setup_logging(logging_config)
 
         # Get logger after setup
         logger = logging.getLogger("bot.kryten.main")
+        assert logger is not None
 
         logger.info(f"Starting Kryten CyTube Connector v{__version__}")
         logger.info(f"Configuration loaded from {config_path}")
@@ -175,8 +177,8 @@ async def main(config_path: str) -> int:
                 "playlist_operations": config.logging.playlist_operations,
                 "chat_messages": config.logging.chat_messages,
                 "command_audit": config.logging.command_audit,
-                "connection_events": config.logging.connection_events
-            }
+                "connection_events": config.logging.connection_events,
+            },
         )
         logger.info(f"Audit logging initialized: {config.logging.base_path}")
         logger.info(f"  - Admin operations: {config.logging.admin_operations}")
@@ -203,24 +205,17 @@ async def main(config_path: str) -> int:
             app_state.nats_client = nats_client
             logger.info("Successfully connected to NATS")
             audit_logger.log_connection_event(
-                "connect", "NATS",
-                details={"servers": ",".join(config.nats.servers)}
+                "connect", "NATS", details={"servers": ",".join(config.nats.servers)}
             )
         except Exception as e:
             # AC-003: NATS connection failure exits with code 1
             logger.error(f"Failed to connect to NATS: {e}", exc_info=True)
-            audit_logger.log_connection_event(
-                "error", "NATS",
-                error=str(e)
-            )
+            audit_logger.log_connection_event("error", "NATS", error=str(e))
             return 1
 
         # Start lifecycle event publisher
         lifecycle = LifecycleEventPublisher(
-            service_name="robot",
-            nats_client=nats_client,
-            logger=logger,
-            version=__version__
+            service_name="robot", nats_client=nats_client, logger=logger, version=__version__
         )
         await lifecycle.start()
 
@@ -230,7 +225,7 @@ async def main(config_path: str) -> int:
         # Register restart handler
         async def handle_restart_notice(data: dict):
             """Handle groupwide restart notice."""
-            delay = data.get('delay_seconds', 5)
+            delay = data.get("delay_seconds", 5)
             logger.warning(f"Restart notice received, shutting down in {delay}s")
             await asyncio.sleep(delay)
             app_state.shutdown_event.set()
@@ -242,6 +237,7 @@ async def main(config_path: str) -> int:
 
         # Start service registry to track microservices
         from .service_registry import ServiceRegistry
+
         service_registry = ServiceRegistry(nats_client, logger)
 
         # Register callbacks for service events
@@ -274,10 +270,7 @@ async def main(config_path: str) -> int:
         try:
             logger.info("Starting state manager")
             state_manager = StateManager(
-                nats_client,
-                config.cytube.channel,
-                logger,
-                counting_config=config.state_counting
+                nats_client, config.cytube.channel, logger, counting_config=config.state_counting
             )
             await state_manager.start()
             app_state.state_manager = state_manager
@@ -295,17 +288,19 @@ async def main(config_path: str) -> int:
         # Register state callbacks BEFORE connecting
         # so initial state events from _request_initial_state() are captured
         if state_manager:
-            def handle_state_event(event_name: str, payload: dict) -> None:
+
+            def handle_state_event(event_name: str, payload: Any) -> None:
                 """Handle events that affect channel state."""
+
                 async def update_state():
                     try:
                         logger.debug(f"State callback triggered: {event_name}")
 
                         if event_name == "emoteList":
-                            await state_manager.update_emotes(payload)
+                            await state_manager.update_emotes(cast(list[dict[str, Any]], payload))
                         elif event_name == "playlist":
                             # Full playlist or empty list
-                            await state_manager.set_playlist(payload)
+                            await state_manager.set_playlist(cast(list[dict[str, Any]], payload))
                         elif event_name == "queue":
                             # Single item added
                             item = payload.get("item", {})
@@ -318,10 +313,10 @@ async def main(config_path: str) -> int:
                         elif event_name == "moveVideo":
                             from_uid = payload.get("from")
                             after = payload.get("after")
-                            if from_uid:
-                                await state_manager.move_playlist_item(from_uid, after)
+                            if from_uid and after is not None:
+                                await state_manager.move_playlist_item(from_uid, str(after))
                         elif event_name == "userlist":
-                            await state_manager.set_userlist(payload)
+                            await state_manager.set_userlist(cast(list[dict[str, Any]], payload))
                         elif event_name == "addUser":
                             await state_manager.add_user(payload)
                         elif event_name == "userLeave":
@@ -345,8 +340,16 @@ async def main(config_path: str) -> int:
 
             # Register state callbacks for relevant events
             state_events = [
-                "emoteList", "playlist", "queue", "delete", "moveVideo",
-                "userlist", "addUser", "userLeave", "setUserRank", "changeMedia"
+                "emoteList",
+                "playlist",
+                "queue",
+                "delete",
+                "moveVideo",
+                "userlist",
+                "addUser",
+                "userLeave",
+                "setUserRank",
+                "changeMedia",
             ]
             for event in state_events:
                 connector.on_event(event, handle_state_event)
@@ -361,6 +364,7 @@ async def main(config_path: str) -> int:
                 message = payload.get("msg", "")
                 # Use server timestamp if available, otherwise current time
                 from datetime import datetime
+
                 timestamp = datetime.now()
                 audit_logger.log_chat_message(username, message, timestamp)
             except Exception as e:
@@ -380,7 +384,7 @@ async def main(config_path: str) -> int:
             timeout=120.0,  # 2 minutes without events triggers reconnection
             on_timeout=placeholder_timeout,
             logger=logger,
-            enabled=True
+            enabled=True,
         )
         await watchdog.start()
         logger.info("Connection watchdog monitoring CyTube health")
@@ -400,23 +404,23 @@ async def main(config_path: str) -> int:
             await connector.connect()
             logger.info("Successfully connected to CyTube")
             audit_logger.log_connection_event(
-                "connect", "CyTube",
-                details={"domain": config.cytube.domain, "channel": config.cytube.channel}
+                "connect",
+                "CyTube",
+                details={"domain": config.cytube.domain, "channel": config.cytube.channel},
             )
 
             # Publish CyTube connection event
             await lifecycle.publish_connected(
-                "CyTube",
-                domain=config.cytube.domain,
-                channel=config.cytube.channel
+                "CyTube", domain=config.cytube.domain, channel=config.cytube.channel
             )
         except KrytenConnectionError as e:
             # AC-004: CyTube connection failure
             logger.error(f"Failed to connect to CyTube: {e}", exc_info=True)
             audit_logger.log_connection_event(
-                "error", "CyTube",
+                "error",
+                "CyTube",
                 details={"domain": config.cytube.domain, "channel": config.cytube.channel},
-                error=str(e)
+                error=str(e),
             )
             # Cleanup
             await lifecycle.publish_shutdown(reason="Failed to connect to CyTube")
@@ -433,7 +437,7 @@ async def main(config_path: str) -> int:
             logger=logger,
             batch_size=1,
             retry_attempts=3,
-            retry_delay=1.0
+            retry_delay=1.0,
         )
         app_state.event_publisher = publisher
 
@@ -449,14 +453,17 @@ async def main(config_path: str) -> int:
             try:
                 # Log disconnection event
                 audit_logger.log_connection_event(
-                    "disconnect", "CyTube",
+                    "disconnect",
+                    "CyTube",
                     details={"domain": config.cytube.domain, "channel": config.cytube.channel},
-                    error=reason
+                    error=reason,
                 )
 
                 # Wait a bit before reconnecting to avoid rapid reconnect loops
                 reconnect_delay = 5.0
-                logger.info(f"Waiting {reconnect_delay}s before attempting reconnect (reason: {reason})...")
+                logger.info(
+                    f"Waiting {reconnect_delay}s before attempting reconnect (reason: {reason})..."
+                )
                 await asyncio.sleep(reconnect_delay)
 
                 # Stop the publisher first
@@ -474,12 +481,13 @@ async def main(config_path: str) -> int:
 
                 # Log successful reconnection
                 audit_logger.log_connection_event(
-                    "reconnect", "CyTube",
+                    "reconnect",
+                    "CyTube",
                     details={
                         "domain": config.cytube.domain,
                         "channel": config.cytube.channel,
-                        "reason": reason
-                    }
+                        "reason": reason,
+                    },
                 )
 
                 # Publish reconnection event via lifecycle
@@ -488,7 +496,7 @@ async def main(config_path: str) -> int:
                         "CyTube",
                         domain=config.cytube.domain,
                         channel=config.cytube.channel,
-                        note=f"Reconnected after: {reason}"
+                        note=f"Reconnected after: {reason}",
                     )
 
                 # Restart the publisher
@@ -499,9 +507,10 @@ async def main(config_path: str) -> int:
             except Exception as e:
                 logger.error(f"Failed to reconnect to CyTube: {e}", exc_info=True)
                 audit_logger.log_connection_event(
-                    "error", "CyTube",
+                    "error",
+                    "CyTube",
                     details={"domain": config.cytube.domain, "channel": config.cytube.channel},
-                    error=f"Reconnect failed: {e}"
+                    error=f"Reconnect failed: {e}",
                 )
                 logger.warning("Falling back to graceful shutdown for systemd restart")
                 app_state.shutdown_event.set()
@@ -513,13 +522,17 @@ async def main(config_path: str) -> int:
             """Handle being kicked from channel."""
             nonlocal reconnect_task
             if config.cytube.aggressive_reconnect:
-                logger.warning("Kicked from channel - aggressive_reconnect enabled, attempting reconnect")
+                logger.warning(
+                    "Kicked from channel - aggressive_reconnect enabled, attempting reconnect"
+                )
                 if reconnect_task is None or reconnect_task.done():
                     reconnect_task = asyncio.create_task(attempt_reconnect("kicked"))
                 else:
                     logger.warning("Reconnect already in progress, ignoring duplicate kick")
             else:
-                logger.warning("Kicked from channel - initiating graceful shutdown for systemd restart")
+                logger.warning(
+                    "Kicked from channel - initiating graceful shutdown for systemd restart"
+                )
                 app_state.shutdown_event.set()
 
         publisher.on_kicked(handle_kicked)
@@ -536,7 +549,9 @@ async def main(config_path: str) -> int:
                 if reconnect_task is None or reconnect_task.done():
                     reconnect_task = asyncio.create_task(attempt_reconnect(reason))
                 else:
-                    logger.warning("Reconnect already in progress, ignoring duplicate connection loss")
+                    logger.warning(
+                        "Reconnect already in progress, ignoring duplicate connection loss"
+                    )
             else:
                 logger.warning("Initiating graceful shutdown for systemd restart")
                 app_state.shutdown_event.set()
@@ -549,9 +564,10 @@ async def main(config_path: str) -> int:
             nonlocal reconnect_task
             logger.error("Connection watchdog timeout - no events received for 2+ minutes")
             audit_logger.log_connection_event(
-                "timeout", "CyTube",
+                "timeout",
+                "CyTube",
                 details={"domain": config.cytube.domain, "channel": config.cytube.channel},
-                error="Watchdog timeout - no events received"
+                error="Watchdog timeout - no events received",
             )
 
             if config.cytube.aggressive_reconnect:
@@ -574,7 +590,14 @@ async def main(config_path: str) -> int:
         if config.commands.enabled:
             logger.info("Starting command subscriber")
             sender = CytubeEventSender(connector, logger, audit_logger)
-            cmd_subscriber = CommandSubscriber(sender, nats_client, logger, config.cytube.domain, config.cytube.channel, audit_logger)
+            cmd_subscriber = CommandSubscriber(
+                sender,
+                nats_client,
+                logger,
+                config.cytube.domain,
+                config.cytube.channel,
+                audit_logger,
+            )
             await cmd_subscriber.start()
             logger.info("Command subscriber started")
         else:
@@ -590,7 +613,7 @@ async def main(config_path: str) -> int:
                     logger=logger,
                     domain=config.cytube.domain,
                     channel=config.cytube.channel,
-                    app_state=app_state
+                    app_state=app_state,
                 )
                 await state_query_handler.start()
             except Exception as e:
@@ -611,11 +634,11 @@ async def main(config_path: str) -> int:
                     response = {
                         "success": True,
                         "rank": connector.user_rank,
-                        "username": config.cytube.user or "guest"
+                        "username": config.cytube.user or "guest",
                     }
 
                     if msg.reply:
-                        response_bytes = json.dumps(response).encode('utf-8')
+                        response_bytes = json.dumps(response).encode("utf-8")
                         await nats_client.publish(msg.reply, response_bytes)
                         logger.debug(f"Sent user level response: rank={connector.user_rank}")
 
@@ -624,15 +647,14 @@ async def main(config_path: str) -> int:
                     if msg.reply:
                         try:
                             error_response = {"success": False, "error": str(e)}
-                            response_bytes = json.dumps(error_response).encode('utf-8')
+                            response_bytes = json.dumps(error_response).encode("utf-8")
                             await nats_client.publish(msg.reply, response_bytes)
                         except Exception as reply_error:
                             logger.error(f"Failed to send error response: {reply_error}")
 
             user_level_subject = f"kryten.user_level.{config.cytube.domain}.{config.cytube.channel}"
-            user_level_subscription = await nats_client.subscribe(
-                subject=user_level_subject,
-                callback=handle_user_level_query
+            user_level_subscription = await nats_client.subscribe_request_reply(
+                subject=user_level_subject, callback=handle_user_level_query
             )
             logger.info(f"User level query handler listening on: {user_level_subject}")
 
@@ -650,15 +672,18 @@ async def main(config_path: str) -> int:
                 logger=logger,
                 command_subscriber=cmd_subscriber,  # Pass command subscriber for metrics
                 host=config.health.host,
-                port=config.health.port
+                port=config.health.port,
             )
             health_monitor.start()
-            logger.info(f"Health endpoint available at http://{config.health.host}:{config.health.port}/health")
+            logger.info(
+                f"Health endpoint available at http://{config.health.host}:{config.health.port}/health"
+            )
         else:
             logger.info("Health monitoring disabled in configuration")
 
         # Start robot command handler for system.ping etc
         from .robot_command_handler import RobotCommandHandler
+
         robot_cmd_handler = RobotCommandHandler(
             nats_client=nats_client,
             logger=logger,
@@ -689,7 +714,7 @@ async def main(config_path: str) -> int:
             domain=config.cytube.domain,
             channel=config.cytube.channel,
             commands_enabled=config.commands.enabled,
-            health_enabled=config.health.enabled
+            health_enabled=config.health.enabled,
         )
 
         # Wait for shutdown signal
@@ -792,7 +817,7 @@ async def main(config_path: str) -> int:
                 try:
                     await asyncio.wait_for(publisher_task, timeout=5.0)
                     logger.info("Event publisher stopped")
-                except (TimeoutError, asyncio.TimeoutError):
+                except TimeoutError:
                     # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
                     logger.warning("Event publisher did not stop within timeout, cancelling")
                     publisher_task.cancel()
@@ -840,69 +865,83 @@ async def main(config_path: str) -> int:
 
     except FileNotFoundError:
         # AC-006: Config file missing
-        if logger:
-            logger.error(f"Configuration file not found: {config_path}")
+        fnf_logger = logger
+        if fnf_logger:
+            fnf_logger.error(f"Configuration file not found: {config_path}")
         else:
             print(f"ERROR: Configuration file not found: {config_path}", file=sys.stderr)
         return 1
 
     except json.JSONDecodeError as e:
         # Configuration JSON parse error
-        if logger:
-            logger.error(f"Invalid JSON in configuration file: {e}")
+        json_logger = logger
+        if json_logger:
+            json_logger.error(f"Invalid JSON in configuration file: {e}")
         else:
             print(f"ERROR: Invalid JSON in configuration file: {e}", file=sys.stderr)
         return 1
 
     except Exception as e:
         # AC-007: Unhandled exception
-        if logger:
-            logger.critical(f"Unhandled exception: {e}", exc_info=True)
+        exc_logger = logger
+        if exc_logger:
+            exc_logger.critical(f"Unhandled exception: {e}", exc_info=True)
         else:
             print(f"CRITICAL: Unhandled exception: {e}", file=sys.stderr)
             import traceback
+
             traceback.print_exc()
 
         # Cleanup any initialized components
+        cleanup_logger = logger
         try:
             if watchdog:
                 try:
                     await watchdog.stop()
                 except Exception as e:
-                    logger.error(f"Error stopping watchdog during cleanup: {e}")
+                    if cleanup_logger:
+                        cleanup_logger.error(f"Error stopping watchdog during cleanup: {e}")
             if health_monitor:
                 try:
                     health_monitor.stop()
                 except Exception as e:
-                    logger.error(f"Error stopping health monitor during cleanup: {e}")
+                    if cleanup_logger:
+                        cleanup_logger.error(f"Error stopping health monitor during cleanup: {e}")
             if state_manager:
                 try:
                     await state_manager.stop()
                 except Exception as e:
-                    logger.error(f"Error stopping state manager during cleanup: {e}")
+                    if cleanup_logger:
+                        cleanup_logger.error(f"Error stopping state manager during cleanup: {e}")
             if cmd_subscriber:
                 try:
                     await cmd_subscriber.stop()
                 except Exception as e:
-                    logger.error(f"Error stopping command subscriber during cleanup: {e}")
+                    if cleanup_logger:
+                        cleanup_logger.error(
+                            f"Error stopping command subscriber during cleanup: {e}"
+                        )
             if publisher:
                 try:
                     await publisher.stop()
                 except Exception as e:
-                    logger.error(f"Error stopping publisher during cleanup: {e}")
+                    if cleanup_logger:
+                        cleanup_logger.error(f"Error stopping publisher during cleanup: {e}")
             if connector:
                 try:
                     await connector.disconnect()
                 except Exception as e:
-                    logger.error(f"Error disconnecting connector during cleanup: {e}")
+                    if cleanup_logger:
+                        cleanup_logger.error(f"Error disconnecting connector during cleanup: {e}")
             if nats_client:
                 try:
                     await nats_client.disconnect()
                 except Exception as e:
-                    logger.error(f"Error disconnecting NATS during cleanup: {e}")
+                    if cleanup_logger:
+                        cleanup_logger.error(f"Error disconnecting NATS during cleanup: {e}")
         except Exception as cleanup_error:
-            if logger:
-                logger.error(f"Error during cleanup: {cleanup_error}", exc_info=True)
+            if cleanup_logger:
+                cleanup_logger.error(f"Error during cleanup: {cleanup_error}", exc_info=True)
 
         # REQ-008: Exit with code 1 on errors
         return 1
@@ -937,22 +976,18 @@ Signals:
 Exit Codes:
   0: Clean shutdown
   1: Error (configuration, connection, or runtime)
-        """
+        """,
     )
 
     # GUD-001: Version flag
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"Kryten v{__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"Kryten v{__version__}")
 
     # REQ-002: Configuration file argument (optional with default)
     parser.add_argument(
         "--config",
         "-c",
         type=str,
-        help="Path to JSON configuration file (default: /etc/kryten/kryten-robot/config.json or ./config.json)"
+        help="Path to JSON configuration file (default: /etc/kryten/kryten-robot/config.json or ./config.json)",
     )
 
     args = parser.parse_args()
@@ -962,10 +997,7 @@ Exit Codes:
         config_path = Path(args.config)
     else:
         # Try default locations in order
-        default_paths = [
-            Path("/etc/kryten/kryten-robot/config.json"),
-            Path("config.json")
-        ]
+        default_paths = [Path("/etc/kryten/kryten-robot/config.json"), Path("config.json")]
 
         config_path = None
         for path in default_paths:
@@ -982,6 +1014,7 @@ Exit Codes:
             sys.exit(1)
 
     # Validate configuration file exists
+    assert config_path is not None
     if not config_path.exists():
         print(f"ERROR: Configuration file not found: {config_path}", file=sys.stderr)
         sys.exit(1)

@@ -36,6 +36,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import cast
 
 from .cytube_connector import CytubeConnector
 from .event_publisher import EventPublisher
@@ -47,6 +48,7 @@ class ShutdownPhase(Enum):
 
     Tracks the progress of the shutdown sequence for logging and debugging.
     """
+
     IDLE = "idle"
     INITIATED = "initiated"
     DRAINING = "draining"
@@ -75,6 +77,7 @@ class ShutdownResult:
         >>> if result.errors:
         ...     print(f"Errors: {result.errors}")
     """
+
     clean_exit: bool
     duration: float
     events_processed: int
@@ -173,7 +176,7 @@ class ShutdownHandler:
 
             if self._shutdown_task is not None:
                 self._logger.debug("Shutdown in progress, waiting for completion")
-                return await self._shutdown_task
+                return cast(ShutdownResult, await self._shutdown_task)
 
             # First shutdown request - create task
             self._shutdown_task = asyncio.create_task(self._execute_shutdown())
@@ -181,12 +184,12 @@ class ShutdownHandler:
         try:
             result = await asyncio.wait_for(self._shutdown_task, timeout=self._timeout)
             self._shutdown_result = result
-            return result
-        except (TimeoutError, asyncio.TimeoutError):
+            return cast(ShutdownResult, result)
+        except TimeoutError:
             # Python 3.10 compat: asyncio.TimeoutError is separate from TimeoutError
             self._logger.critical(
                 "Shutdown timeout exceeded - forcing termination",
-                extra={"timeout": self._timeout, "phase": self._phase.value}
+                extra={"timeout": self._timeout, "phase": self._phase.value},
             )
             result = ShutdownResult(
                 clean_exit=False,
@@ -223,12 +226,9 @@ class ShutdownHandler:
             phase_start = time.time()
 
             try:
-                await asyncio.wait_for(
-                    self._publisher.stop(),
-                    timeout=self._component_timeout
-                )
+                await asyncio.wait_for(self._publisher.stop(), timeout=self._component_timeout)
                 self._logger.info("Event publisher stopped cleanly")
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 error = f"Publisher stop timeout ({self._component_timeout}s)"
                 self._logger.warning(error)
                 errors.append(error)
@@ -247,11 +247,10 @@ class ShutdownHandler:
             self._logger.info("Disconnecting CyTube connector")
             try:
                 await asyncio.wait_for(
-                    self._connector.disconnect(),
-                    timeout=self._component_timeout
+                    self._connector.disconnect(), timeout=self._component_timeout
                 )
                 self._logger.info("CyTube connector disconnected cleanly")
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 error = f"Connector disconnect timeout ({self._component_timeout}s)"
                 self._logger.warning(error)
                 errors.append(error)
@@ -264,11 +263,10 @@ class ShutdownHandler:
             self._logger.info("Disconnecting NATS client")
             try:
                 await asyncio.wait_for(
-                    self._nats_client.disconnect(),
-                    timeout=self._component_timeout
+                    self._nats_client.disconnect(), timeout=self._component_timeout
                 )
                 self._logger.info("NATS client disconnected cleanly")
-            except (TimeoutError, asyncio.TimeoutError):
+            except TimeoutError:
                 error = f"NATS disconnect timeout ({self._component_timeout}s)"
                 self._logger.warning(error)
                 errors.append(error)
@@ -306,7 +304,7 @@ class ShutdownHandler:
                     "duration": duration,
                     "events_processed": events_processed,
                     "error_count": len(errors),
-                }
+                },
             )
 
             return ShutdownResult(

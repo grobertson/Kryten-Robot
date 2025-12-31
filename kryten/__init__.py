@@ -4,7 +4,8 @@ This package provides a standalone Socket.IO client that connects to CyTube
 chat servers and publishes events to NATS for consumption by Rosey-Robot plugins.
 """
 
-from importlib.metadata import version as _get_pkg_version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _get_pkg_version
 
 try:
     __version__ = _get_pkg_version("kryten-robot")

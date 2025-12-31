@@ -12,8 +12,11 @@ restarts across the service group.
 import json
 import logging
 import socket
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
+
+from nats.aio.subscription import Subscription
 
 from .nats_client import NatsClient
 
@@ -65,8 +68,8 @@ class LifecycleEventPublisher:
         self._logger = logger
         self._version = version
         self._running = False
-        self._subscription = None
-        self._restart_callback: callable | None = None
+        self._subscription: Subscription | None = None
+        self._restart_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None
 
         # Service metadata
         self._hostname = socket.gethostname()
@@ -77,6 +80,11 @@ class LifecycleEventPublisher:
         """Check if lifecycle publisher is running."""
         return self._running
 
+    @property
+    def stats(self) -> dict[str, Any]:
+        """Get publisher statistics."""
+        return {}
+
     async def start(self) -> None:
         """Start lifecycle event publisher and subscribe to group events."""
         if self._running:
@@ -84,13 +92,12 @@ class LifecycleEventPublisher:
             return
 
         self._running = True
-        self._start_time = datetime.now(timezone.utc)
+        self._start_time = datetime.now(UTC)
 
         # Subscribe to groupwide restart notices
         try:
             self._subscription = await self._nats.subscribe(
-                "kryten.lifecycle.group.restart",
-                callback=self._handle_restart_notice
+                "kryten.lifecycle.group.restart", callback=self._handle_restart_notice
             )
             self._logger.info("Subscribed to groupwide restart notices")
         except Exception as e:
@@ -110,7 +117,7 @@ class LifecycleEventPublisher:
         self._subscription = None
         self._running = False
 
-    def on_restart_notice(self, callback: callable) -> None:
+    def on_restart_notice(self, callback: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
         """Register callback for groupwide restart notices.
 
         Args:
@@ -119,15 +126,15 @@ class LifecycleEventPublisher:
         """
         self._restart_callback = callback
 
-    async def _handle_restart_notice(self, msg) -> None:
+    async def _handle_restart_notice(self, subject: str, data_bytes: bytes) -> None:
         """Handle incoming groupwide restart notice."""
         try:
-            data = json.loads(msg.data.decode('utf-8'))
+            data = json.loads(data_bytes.decode("utf-8"))
 
             # Extract restart parameters
-            initiator = data.get('initiator', 'unknown')
-            reason = data.get('reason', 'No reason provided')
-            delay_seconds = data.get('delay_seconds', 5)
+            initiator = data.get("initiator", "unknown")
+            reason = data.get("reason", "No reason provided")
+            delay_seconds = data.get("delay_seconds", 5)
 
             self._logger.warning(
                 f"Groupwide restart notice received from {initiator}: {reason} "
@@ -150,13 +157,13 @@ class LifecycleEventPublisher:
         """Build base event payload with common metadata."""
         uptime = None
         if self._start_time:
-            uptime = (datetime.now(timezone.utc) - self._start_time).total_seconds()
+            uptime = (datetime.now(UTC) - self._start_time).total_seconds()
 
         return {
             "service": self._service_name,
             "version": self._version,
             "hostname": self._hostname,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "uptime_seconds": uptime,
         }
 
@@ -171,7 +178,7 @@ class LifecycleEventPublisher:
         payload.update(extra_data)
 
         try:
-            data_bytes = json.dumps(payload).encode('utf-8')
+            data_bytes = json.dumps(payload).encode("utf-8")
             await self._nats.publish(subject, data_bytes)
             self._logger.info(f"Published startup event to {subject}")
         except Exception as e:
@@ -190,7 +197,7 @@ class LifecycleEventPublisher:
         payload.update(extra_data)
 
         try:
-            data_bytes = json.dumps(payload).encode('utf-8')
+            data_bytes = json.dumps(payload).encode("utf-8")
             await self._nats.publish(subject, data_bytes)
             self._logger.info(f"Published shutdown event to {subject}")
         except Exception as e:
@@ -209,13 +216,15 @@ class LifecycleEventPublisher:
         payload.update(extra_data)
 
         try:
-            data_bytes = json.dumps(payload).encode('utf-8')
+            data_bytes = json.dumps(payload).encode("utf-8")
             await self._nats.publish(subject, data_bytes)
             self._logger.debug(f"Published connected event to {subject}")
         except Exception as e:
             self._logger.error(f"Failed to publish connected event: {e}", exc_info=True)
 
-    async def publish_disconnected(self, target: str, reason: str = "Unknown", **extra_data) -> None:
+    async def publish_disconnected(
+        self, target: str, reason: str = "Unknown", **extra_data
+    ) -> None:
         """Publish connection lost event.
 
         Args:
@@ -230,18 +239,14 @@ class LifecycleEventPublisher:
         payload.update(extra_data)
 
         try:
-            data_bytes = json.dumps(payload).encode('utf-8')
+            data_bytes = json.dumps(payload).encode("utf-8")
             await self._nats.publish(subject, data_bytes)
             self._logger.warning(f"Published disconnected event to {subject}")
         except Exception as e:
             self._logger.error(f"Failed to publish disconnected event: {e}", exc_info=True)
 
     async def publish_group_restart(
-        self,
-        reason: str,
-        delay_seconds: int = 5,
-        initiator: str | None = None,
-        **extra_data
+        self, reason: str, delay_seconds: int = 5, initiator: str | None = None, **extra_data
     ) -> None:
         """Publish groupwide restart notice to all Kryten services.
 
@@ -256,16 +261,15 @@ class LifecycleEventPublisher:
             "initiator": initiator or self._service_name,
             "reason": reason,
             "delay_seconds": delay_seconds,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         payload.update(extra_data)
 
         try:
-            data_bytes = json.dumps(payload).encode('utf-8')
+            data_bytes = json.dumps(payload).encode("utf-8")
             await self._nats.publish(subject, data_bytes)
             self._logger.warning(
-                f"Published groupwide restart notice: {reason} "
-                f"(delay: {delay_seconds}s)"
+                f"Published groupwide restart notice: {reason} " f"(delay: {delay_seconds}s)"
             )
         except Exception as e:
             self._logger.error(f"Failed to publish restart notice: {e}", exc_info=True)

@@ -7,7 +7,7 @@ with metadata before publishing to NATS.
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -41,9 +41,7 @@ class RawEvent:
     payload: dict[str, Any]
     channel: str
     domain: str
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def to_dict(self) -> dict[str, Any]:
@@ -120,9 +118,7 @@ class RawEvent:
             payload=data["payload"],
             channel=data["channel"],
             domain=data["domain"],
-            timestamp=data.get(
-                "timestamp", datetime.now(timezone.utc).isoformat()
-            ),
+            timestamp=data.get("timestamp", datetime.now(UTC).isoformat()),
             correlation_id=data.get("correlation_id", str(uuid.uuid4())),
         )
 
