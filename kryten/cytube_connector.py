@@ -412,8 +412,8 @@ class CytubeConnector:
         Sends login event with credentials (registered user) or just a name
         (guest user). Handles rate limiting for guest logins.
 
-        When guest_mode is enabled in config, always authenticates as guest
-        regardless of whether credentials are provided.
+        When guest_mode is enabled in config, skips authentication entirely
+        to connect as a truly anonymous guest.
 
         Raises:
             NotConnectedError: If socket is not connected.
@@ -426,14 +426,15 @@ class CytubeConnector:
             raise NotConnectedError("Socket not connected")
 
         if self.config.guest_mode:
-            # Guest mode explicitly enabled - always connect as guest
-            self.logger.info("Guest mode enabled - authenticating as guest")
-            await self._authenticate_guest()
+            # Guest mode explicitly enabled - skip login for anonymous guest
+            self.logger.info("Guest mode enabled - connecting anonymously (no login event)")
+            self._user_rank = 0  # Anonymous guests have rank 0
+            return
         elif self.config.user and self.config.password:
             # Registered user authentication
             await self._authenticate_registered()
         else:
-            # Guest authentication
+            # Named guest authentication
             await self._authenticate_guest()
 
     async def _authenticate_registered(self) -> None:

@@ -47,6 +47,7 @@ Configures connection to CyTube chat server.
 - When guest mode is enabled, the bot connects **anonymously** without a username
 - Anonymous guests do not appear in the channel user list
 - This is the same as opening a CyTube page without logging in
+- **No login event is sent to the server** - the bot simply joins the channel
 - Commands are **always** force-disabled regardless of the `commands.enabled` setting
 - The `user` field is ignored in guest mode (no username is sent to the server)
 - The `password` field is ignored in guest mode

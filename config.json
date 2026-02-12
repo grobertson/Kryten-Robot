@@ -1,8 +1,8 @@
 {
   "cytube": {"domain": "cytu.be",
-            "channel": "AKWHR89327M",
-            "user": "SaveTheRobots",
-            "password": "wz6Kz.#2gXWw4B@",
+            "channel": "Channel-Z",
+            "user": "FaxyBrown",
+            "password": "ZV84paaPgj8jYRW", 
             "aggressive_reconnect": true
   },
   "nats": {"servers": ["nats://kraken.local:4222"],
