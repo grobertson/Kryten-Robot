@@ -1,3 +1,34 @@
+# Kryten-Robot v1.0.1 Release Notes
+
+## Overview
+
+Version 1.0.1 improves reconnection behavior by suppressing historical chat message floods.
+
+## Changes in v1.0.1
+
+### Improvements
+
+- ✅ **Suppress Historical Chat on Reconnect**
+  - CyTube sends historical chat messages when clients reconnect (for catch-up)
+  - This flood of old messages is now automatically suppressed for 3 seconds after reconnection
+  - Only applies to reconnections - initial connection still receives full history
+  - Prevents unnecessary processing of stale chat data
+  - Improves performance and reduces noise in logs/NATS events
+
+### Technical Details
+
+- Added `_suppress_chat_history` flag to track reconnection state
+- Chat messages filtered during 3-second suppression window
+- All other event types process normally
+- Suppression automatically clears after delay
+
+### Testing
+
+- ✅ All 50 unit tests passing
+- ✅ Backward compatible - no breaking changes
+
+---
+
 # Kryten-Robot v0.9.1 Release Notes
 
 ## Overview
