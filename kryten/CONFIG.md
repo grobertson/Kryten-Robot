@@ -43,9 +43,12 @@ Configures connection to CyTube chat server.
 ```
 
 **Guest Mode:**
-- Set `"guest_mode": true` to connect as a guest user
-- When guest mode is enabled, commands are **always** force-disabled regardless of the `commands.enabled` setting
-- The `user` field is used as the guest display name (defaults to "Guest" if not set)
+- Set `"guest_mode": true` to connect as an anonymous guest user
+- When guest mode is enabled, the bot connects **anonymously** without a username
+- Anonymous guests do not appear in the channel user list
+- This is the same as opening a CyTube page without logging in
+- Commands are **always** force-disabled regardless of the `commands.enabled` setting
+- The `user` field is ignored in guest mode (no username is sent to the server)
 - The `password` field is ignored in guest mode
 
 ```json
@@ -53,7 +56,21 @@ Configures connection to CyTube chat server.
   "cytube": {
     "domain": "cytu.be",
     "channel": "MyAwesomeChannel",
-    "guest_mode": true,
+    "guest_mode": true
+  }
+}
+```
+
+**Named Guest Mode (guest_mode: false):**
+- If `guest_mode` is false and no password is provided, connects as a named guest
+- Named guests appear in the user list with their username
+- Set the `user` field to choose the guest display name (defaults to "Guest")
+
+```json
+{
+  "cytube": {
+    "domain": "cytu.be",
+    "channel": "MyAwesomeChannel",
     "user": "MyBotGuest"
   }
 }

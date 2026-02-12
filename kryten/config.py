@@ -30,9 +30,9 @@ class CytubeConfig:
         password: Optional password for user authentication.
         aggressive_reconnect: If True, attempt to reconnect when kicked instead
             of shutting down. Default: False.
-        guest_mode: If True, connect as a guest user regardless of whether
-            credentials are provided. Commands are always disabled in guest
-            mode. Default: False.
+        guest_mode: If True, connect as a truly anonymous guest without a username.
+            Anonymous guests do not appear in the channel roster. Commands are
+            always disabled in guest mode. Default: False.
 
     Examples:
         >>> cfg = CytubeConfig(domain="cytu.be", channel="test")

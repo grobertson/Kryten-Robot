@@ -477,6 +477,10 @@ class CytubeConnector:
     async def _authenticate_guest(self) -> None:
         """Authenticate as guest user.
 
+        If guest_mode is enabled in config, connects as truly anonymous guest
+        (no name, doesn't appear in user list). Otherwise, connects with a
+        guest name that appears in the roster.
+
         Handles rate limiting by parsing delay from error messages and
         automatically retrying after the specified wait period.
 
@@ -486,15 +490,21 @@ class CytubeConnector:
         if self._socket is None:
             raise NotConnectedError("Socket not connected")
 
-        guest_name = self.config.user or "Guest"
-        self.logger.debug(f"Authenticating as guest: {guest_name}")
+        # In guest_mode, connect as truly anonymous (no name)
+        # Otherwise use provided name or default to "Guest"
+        if self.config.guest_mode:
+            login_data = {}  # Empty payload for anonymous guest
+            guest_name = "anonymous"
+            self.logger.debug("Authenticating as anonymous guest (no username)")
+        else:
+            guest_name = self.config.user or "Guest"
+            login_data = {"name": guest_name}
+            self.logger.debug(f"Authenticating as guest: {guest_name}")
 
         max_retries = 3
         retry_count = 0
 
         while retry_count < max_retries:
-            login_data = {"name": guest_name}
-
             # Create matcher for login response
             matcher = SocketIOResponse.match_event(r"^login$")
 
