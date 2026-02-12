@@ -1,3 +1,47 @@
+# Kryten-Robot v1.0.2 Release Notes
+
+## Overview
+
+Version 1.0.2 fixes anonymous guest mode to properly connect without sending login credentials.
+
+## Changes in v1.0.2
+
+### Bug Fixes
+
+- ✅ **Fixed Anonymous Guest Mode Connection**
+  - Anonymous guest mode now properly skips the login event entirely
+  - Previously attempted to send empty login payload, causing server timeout
+  - Bot now simply joins channel without authentication (matching CyTube's anonymous protocol)
+  - Anonymous guests remain invisible in channel user list as intended
+  - Commands remain force-disabled in guest mode for safety
+
+### Technical Details
+
+- Modified `_authenticate_user()` to skip login when `guest_mode: true`
+- User rank automatically set to 0 (anonymous guest)
+- No breaking changes - existing configurations work unchanged
+- Matches CyTube's behavior for anonymous web clients
+
+### Testing
+
+- ✅ All 50 unit tests passing
+- ✅ Tested with live CyTube connection in guest mode
+- ✅ Successfully receives events without appearing in user list
+
+### Configuration
+
+```json
+{
+  "cytube": {
+    "domain": "cytu.be",
+    "channel": "your-channel",
+    "guest_mode": true
+  }
+}
+```
+
+---
+
 # Kryten-Robot v1.0.1 Release Notes
 
 ## Overview
