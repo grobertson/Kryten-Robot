@@ -70,6 +70,7 @@ class CytubeConnector:
         self._messages_received = 0
         self._events_processed = 0
         self._consumer_task: asyncio.Task | None = None
+        self._suppress_chat_history: bool = False  # Suppress historical chat on reconnect
 
     @property
     def is_connected(self) -> bool:
@@ -199,9 +200,15 @@ class CytubeConnector:
             # Track connection timing
             import time
 
-            if self._connected_since is not None:
+            is_reconnection = self._connected_since is not None
+            if is_reconnection:
                 # This is a reconnection
                 self._reconnect_count += 1
+                # Suppress historical chat messages for the next few seconds
+                self._suppress_chat_history = True
+                self.logger.info(
+                    f"Reconnecting (attempt #{self._reconnect_count}) - suppressing historical chat"
+                )
             self._connected_since = time.time()
 
             # Start event consumer task
@@ -211,6 +218,11 @@ class CytubeConnector:
             # This ensures KV stores are populated with complete state
             # even if bot starts after channel is already active
             await self._request_initial_state()
+
+            # If this was a reconnection, schedule unsuppression of chat history
+            # after a delay (give time for historical messages to arrive and be filtered)
+            if is_reconnection:
+                asyncio.create_task(self._unsuppress_chat_after_delay(3.0))
 
             self.logger.info(
                 "Connected to CyTube",
@@ -595,6 +607,19 @@ class CytubeConnector:
             # We'll still get delta updates going forward
             self.logger.warning(f"Failed to request initial state: {e}")
 
+    async def _unsuppress_chat_after_delay(self, delay: float) -> None:
+        """Clear the chat suppression flag after a delay.
+
+        This allows historical chat messages sent during reconnection to be
+        filtered out, while allowing new messages after the delay.
+
+        Args:
+            delay: Time in seconds to wait before unsuppressing chat.
+        """
+        await asyncio.sleep(delay)
+        self._suppress_chat_history = False
+        self.logger.debug("Chat history suppression cleared - processing all chat messages")
+
     async def __aenter__(self):
         """Async context manager entry.
 
@@ -645,6 +670,11 @@ class CytubeConnector:
                     import time
 
                     self._last_event_time = time.time()
+
+                    # Filter out historical chat messages on reconnection
+                    if self._suppress_chat_history and event_name == "chatMsg":
+                        self.logger.debug("Suppressing historical chat message during reconnect")
+                        continue
 
                     # Try to queue event, drop oldest if full
                     try:
