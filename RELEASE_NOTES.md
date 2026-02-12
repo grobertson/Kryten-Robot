@@ -1,3 +1,68 @@
+# Kryten-Robot v1.1.3 Release Notes
+
+## Overview
+
+Version 1.1.3 enhances guest mode to operate as a truly passive observer without requiring NATS infrastructure.
+
+## Changes in v1.1.3
+
+### New Features
+
+- ✅ **Guest Mode Now Fully Passive**
+  - No NATS connection established when `guest_mode: true`
+  - No event publishing or broadcasting to message bus
+  - Disables all NATS-dependent components (lifecycle, service registry, state manager, command handlers)
+  - Bot now operates as pure observer - connects to CyTube and receives events locally only
+  - Health monitoring remains active for basic connectivity checks
+  - Perfect for monitoring channels without requiring infrastructure
+
+### Improvements
+
+- ✅ **Codebase Cleanup**
+  - Removed unused temporary files and old utility scripts
+  - Removed obsolete patch files
+  - Removed setup.py (now using pyproject.toml exclusively)
+
+### Technical Details
+
+**Guest Mode Architecture:**
+- CyTube connection: ✅ Active (anonymous, no username)
+- Event reception: ✅ Active (local only)
+- Event publishing: ❌ Disabled (no NATS broadcast)
+- NATS connection: ❌ Disabled
+- State persistence: ❌ Disabled (no KV stores)
+- Command handling: ❌ Disabled
+- Lifecycle events: ❌ Disabled
+- Health endpoint: ✅ Active
+
+### Use Cases
+
+- Monitor channels without affecting message bus
+- Observe events for debugging without side effects
+- Run without NATS infrastructure dependency
+- Lightweight passive monitoring scenarios
+
+### Configuration
+
+```json
+{
+  "cytube": {
+    "domain": "cytu.be",
+    "channel": "your-channel",
+    "guest_mode": true
+  }
+}
+```
+
+### Testing
+
+- ✅ All 50 unit tests passing
+- ✅ Tested with live CyTube connection in guest mode
+- ✅ Verified no NATS connection attempts
+- ✅ Verified no event publishing
+
+---
+
 # Kryten-Robot v1.0.2 Release Notes
 
 ## Overview
