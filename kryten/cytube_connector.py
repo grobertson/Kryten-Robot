@@ -400,6 +400,9 @@ class CytubeConnector:
         Sends login event with credentials (registered user) or just a name
         (guest user). Handles rate limiting for guest logins.
 
+        When guest_mode is enabled in config, always authenticates as guest
+        regardless of whether credentials are provided.
+
         Raises:
             NotConnectedError: If socket is not connected.
             AuthenticationError: If authentication fails.
@@ -410,7 +413,11 @@ class CytubeConnector:
         if not self._socket:
             raise NotConnectedError("Socket not connected")
 
-        if self.config.user and self.config.password:
+        if self.config.guest_mode:
+            # Guest mode explicitly enabled - always connect as guest
+            self.logger.info("Guest mode enabled - authenticating as guest")
+            await self._authenticate_guest()
+        elif self.config.user and self.config.password:
             # Registered user authentication
             await self._authenticate_registered()
         else:

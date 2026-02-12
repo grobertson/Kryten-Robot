@@ -3,7 +3,8 @@
     "domain": "cytu.be",
     "channel": "your-channel-name",
     "user": "your-bot-username",
-    "password": "your-bot-password"
+    "password": "your-bot-password",
+    "guest_mode": false
   },
   "nats": {
     "servers": ["nats://localhost:4222"],

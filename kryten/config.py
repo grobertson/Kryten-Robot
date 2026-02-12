@@ -30,6 +30,9 @@ class CytubeConfig:
         password: Optional password for user authentication.
         aggressive_reconnect: If True, attempt to reconnect when kicked instead
             of shutting down. Default: False.
+        guest_mode: If True, connect as a guest user regardless of whether
+            credentials are provided. Commands are always disabled in guest
+            mode. Default: False.
 
     Examples:
         >>> cfg = CytubeConfig(domain="cytu.be", channel="test")
@@ -43,6 +46,7 @@ class CytubeConfig:
     user: str | None = None
     password: str | None = None
     aggressive_reconnect: bool = False
+    guest_mode: bool = False
 
 
 @dataclass
@@ -267,6 +271,9 @@ def _load_cytube_config(data: dict) -> CytubeConfig:
     # Extract aggressive_reconnect option (default: False)
     aggressive_reconnect = bool(cytube_data.get("aggressive_reconnect", False))
 
+    # Extract guest_mode option (default: False)
+    guest_mode = bool(cytube_data.get("guest_mode", False))
+
     return CytubeConfig(
         domain=domain,
         channel=channel,
@@ -274,6 +281,7 @@ def _load_cytube_config(data: dict) -> CytubeConfig:
         user=user,
         password=password,
         aggressive_reconnect=aggressive_reconnect,
+        guest_mode=guest_mode,
     )
 
 

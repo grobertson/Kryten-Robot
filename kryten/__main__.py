@@ -83,6 +83,8 @@ def print_startup_banner(config_path: str) -> None:
         print(f"Config:  {Path(config_path).resolve()}")
         print(f"Domain:  {config.cytube.domain}")
         print(f"Channel: {config.cytube.channel}")
+        if config.cytube.guest_mode:
+            print(f"Mode:    GUEST (commands disabled)")
         print(f"NATS:    {config.nats.servers[0] if config.nats.servers else 'N/A'}")
         print("=" * 60)
         print("NATS Subjects:")
@@ -168,6 +170,15 @@ async def main(config_path: str) -> int:
         logger.info(f"Starting Kryten CyTube Connector v{__version__}")
         logger.info(f"Configuration loaded from {config_path}")
         logger.info(f"Log level: {config.log_level}")
+
+        # Guest mode: force-disable commands for safety
+        if config.cytube.guest_mode:
+            logger.info("Guest mode enabled - connecting as guest user")
+            if config.commands.enabled:
+                logger.warning(
+                    "Commands force-disabled: commands cannot be enabled in guest mode"
+                )
+                config.commands.enabled = False
 
         # Initialize audit logger
         audit_logger = create_audit_logger(
@@ -700,6 +711,8 @@ async def main(config_path: str) -> int:
         # REQ-009: Log ready message
         logger.info("=" * 60)
         logger.info("Kryten is ready and processing events")
+        if config.cytube.guest_mode:
+            logger.info("Running in GUEST MODE - read-only, commands disabled")
         if config.commands.enabled:
             logger.info("Bidirectional bridge active - can send and receive")
         else:

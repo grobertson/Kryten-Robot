@@ -1,3 +1,56 @@
+# Kryten-Robot v0.9.1 Release Notes
+
+## Overview
+
+Version 0.9.1 adds support for connecting to CyTube as a guest user, with automatic command safety controls.
+
+## Changes in v0.9.1
+
+### New Features
+
+- ✅ **Guest Mode Support**
+  - Connect to CyTube as a guest user without credentials
+  - Set `"guest_mode": true` in configuration
+  - Commands are automatically force-disabled in guest mode for safety
+  - Guest name can be customized via `user` field (defaults to "Guest")
+  - Perfect for read-only monitoring or public channels
+
+### Configuration Updates
+
+- ✅ **New `guest_mode` Option**
+  - Added to `CytubeConfig` in configuration
+  - Documented in `CONFIG.md` with examples
+  - Updated example configs: `config.example.json`, `kryten/config.example.json`
+
+### Security
+
+- 🔒 **Command Safety**
+  - Commands are unconditionally disabled when `guest_mode: true`
+  - Prevents accidental command execution with guest credentials
+  - Clear logging indicates when guest mode is active
+
+### Developer Experience
+
+- 📝 **Enhanced Logging**
+  - Startup banner shows "Mode: GUEST (commands disabled)"
+  - Ready message indicates guest mode status
+  - Clear warnings if commands are disabled due to guest mode
+
+## Example Configuration
+
+```json
+{
+  "cytube": {
+    "domain": "cytu.be",
+    "channel": "YourChannel",
+    "guest_mode": true,
+    "user": "KrytenGuest"
+  }
+}
+```
+
+---
+
 # Kryten-Robot v0.5.1 Release Notes
 
 ## Overview

@@ -26,6 +26,7 @@ Configures connection to CyTube chat server.
 | `channel_password` | string\|null | No | `null` | Password for password-protected channels |
 | `user` | string\|null | No | `null` | Bot username for authentication |
 | `password` | string\|null | No | `null` | Bot password (use env var for security) |
+| `guest_mode` | boolean | No | `false` | Connect as guest user; commands are always disabled |
 
 **Examples:**
 
@@ -37,6 +38,23 @@ Configures connection to CyTube chat server.
     "channel_password": null,
     "user": "MyBot",
     "password": null
+  }
+}
+```
+
+**Guest Mode:**
+- Set `"guest_mode": true` to connect as a guest user
+- When guest mode is enabled, commands are **always** force-disabled regardless of the `commands.enabled` setting
+- The `user` field is used as the guest display name (defaults to "Guest" if not set)
+- The `password` field is ignored in guest mode
+
+```json
+{
+  "cytube": {
+    "domain": "cytu.be",
+    "channel": "MyAwesomeChannel",
+    "guest_mode": true,
+    "user": "MyBotGuest"
   }
 }
 ```

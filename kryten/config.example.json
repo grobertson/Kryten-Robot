@@ -4,7 +4,8 @@
     "channel": "your-channel-name",
     "channel_password": null,
     "user": "YourBotName",
-    "password": null
+    "password": null,
+    "guest_mode": false
   },
   "nats": {
     "servers": ["nats://localhost:4222"],
