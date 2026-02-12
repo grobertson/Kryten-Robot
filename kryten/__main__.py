@@ -21,6 +21,7 @@ Exit Codes:
 
 import argparse
 import asyncio
+import json
 import logging
 import signal
 import sys
@@ -84,13 +85,15 @@ def print_startup_banner(config_path: str) -> None:
         print(f"Domain:  {config.cytube.domain}")
         print(f"Channel: {config.cytube.channel}")
         if config.cytube.guest_mode:
-            print("Mode:    GUEST (commands disabled)")
-        print(f"NATS:    {config.nats.servers[0] if config.nats.servers else 'N/A'}")
+            print("Mode:    GUEST (commands disabled, no NATS)")
+        else:
+            print(f"NATS:    {config.nats.servers[0] if config.nats.servers else 'N/A'}")
         print("=" * 60)
-        print("NATS Subjects:")
-        print(f"  Publishing:  {event_subject.rsplit('.', 1)[0]}.*")
-        print(f"  Subscribing: {command_base}.*")
-        print("=" * 60)
+        if not config.cytube.guest_mode:
+            print("NATS Subjects:")
+            print(f"  Publishing:  {event_subject.rsplit('.', 1)[0]}.*")
+            print(f"  Subscribing: {command_base}.*")
+            print("=" * 60)
         print()
     except Exception as e:
         print("=" * 60)
@@ -207,89 +210,97 @@ async def main(config_path: str) -> int:
         signal.signal(signal.SIGTERM, signal_handler)
         logger.debug("Signal handlers registered (SIGINT, SIGTERM)")
 
-        # REQ-004: Connect to NATS before CyTube (event sink must be ready)
-        logger.info(f"Connecting to NATS: {config.nats.servers}")
-        nats_client = NatsClient(config.nats, logger)
+        # Skip NATS connection and event publishing in guest mode
+        if config.cytube.guest_mode:
+            logger.info("Guest mode enabled - skipping NATS connection and event publishing")
+            nats_client = None
+            lifecycle = None
+            service_registry = None
+            state_manager = None
+        else:
+            # REQ-004: Connect to NATS before CyTube (event sink must be ready)
+            logger.info(f"Connecting to NATS: {config.nats.servers}")
+            nats_client = NatsClient(config.nats, logger)
 
-        try:
-            await nats_client.connect()
-            app_state.nats_client = nats_client
-            logger.info("Successfully connected to NATS")
-            audit_logger.log_connection_event(
-                "connect", "NATS", details={"servers": ",".join(config.nats.servers)}
+            try:
+                await nats_client.connect()
+                app_state.nats_client = nats_client
+                logger.info("Successfully connected to NATS")
+                audit_logger.log_connection_event(
+                    "connect", "NATS", details={"servers": ",".join(config.nats.servers)}
+                )
+            except Exception as e:
+                # AC-003: NATS connection failure exits with code 1
+                logger.error(f"Failed to connect to NATS: {e}", exc_info=True)
+                audit_logger.log_connection_event("error", "NATS", error=str(e))
+                return 1
+
+            # Start lifecycle event publisher
+            lifecycle = LifecycleEventPublisher(
+                service_name="robot", nats_client=nats_client, logger=logger, version=__version__
             )
-        except Exception as e:
-            # AC-003: NATS connection failure exits with code 1
-            logger.error(f"Failed to connect to NATS: {e}", exc_info=True)
-            audit_logger.log_connection_event("error", "NATS", error=str(e))
-            return 1
+            await lifecycle.start()
 
-        # Start lifecycle event publisher
-        lifecycle = LifecycleEventPublisher(
-            service_name="robot", nats_client=nats_client, logger=logger, version=__version__
-        )
-        await lifecycle.start()
+            # Publish startup event
+            await lifecycle.publish_startup()
 
-        # Publish startup event
-        await lifecycle.publish_startup()
+            # Register restart handler
+            async def handle_restart_notice(data: dict):
+                """Handle groupwide restart notice."""
+                delay = data.get("delay_seconds", 5)
+                logger.warning(f"Restart notice received, shutting down in {delay}s")
+                await asyncio.sleep(delay)
+                app_state.shutdown_event.set()
 
-        # Register restart handler
-        async def handle_restart_notice(data: dict):
-            """Handle groupwide restart notice."""
-            delay = data.get("delay_seconds", 5)
-            logger.warning(f"Restart notice received, shutting down in {delay}s")
-            await asyncio.sleep(delay)
-            app_state.shutdown_event.set()
+            lifecycle.on_restart_notice(handle_restart_notice)
 
-        lifecycle.on_restart_notice(handle_restart_notice)
+            # Publish NATS connection event
+            await lifecycle.publish_connected("NATS", servers=config.nats.servers)
 
-        # Publish NATS connection event
-        await lifecycle.publish_connected("NATS", servers=config.nats.servers)
+            # Start service registry to track microservices
+            from .service_registry import ServiceRegistry
 
-        # Start service registry to track microservices
-        from .service_registry import ServiceRegistry
+            service_registry = ServiceRegistry(nats_client, logger)
 
-        service_registry = ServiceRegistry(nats_client, logger)
-
-        # Register callbacks for service events
-        def on_service_registered(service_info):
-            logger.info(
-                f"🔵 Service registered: {service_info.name} v{service_info.version} "
-                f"on {service_info.hostname}"
-            )
-
-        def on_service_heartbeat(service_info):
-            # Only log every 10th heartbeat to avoid spam
-            if service_info.heartbeat_count % 10 == 0:
-                logger.debug(
-                    f"💓 Heartbeat from {service_info.name} "
-                    f"(count: {service_info.heartbeat_count})"
+            # Register callbacks for service events
+            def on_service_registered(service_info):
+                logger.info(
+                    f"🔵 Service registered: {service_info.name} v{service_info.version} "
+                    f"on {service_info.hostname}"
                 )
 
-        def on_service_shutdown(service_name):
-            logger.warning(f"🔴 Service shutdown: {service_name}")
+            def on_service_heartbeat(service_info):
+                # Only log every 10th heartbeat to avoid spam
+                if service_info.heartbeat_count % 10 == 0:
+                    logger.debug(
+                        f"💓 Heartbeat from {service_info.name} "
+                        f"(count: {service_info.heartbeat_count})"
+                    )
 
-        service_registry.on_service_registered(on_service_registered)
-        service_registry.on_service_heartbeat(on_service_heartbeat)
-        service_registry.on_service_shutdown(on_service_shutdown)
+            def on_service_shutdown(service_name):
+                logger.warning(f"🔴 Service shutdown: {service_name}")
 
-        await service_registry.start()
-        app_state.service_registry = service_registry
+            service_registry.on_service_registered(on_service_registered)
+            service_registry.on_service_heartbeat(on_service_heartbeat)
+            service_registry.on_service_shutdown(on_service_shutdown)
 
-        # REQ-XXX: Start state manager BEFORE connecting to CyTube
-        # This ensures callbacks are ready when initial state events arrive
-        try:
-            logger.info("Starting state manager")
-            state_manager = StateManager(
-                nats_client, config.cytube.channel, logger, counting_config=config.state_counting
-            )
-            await state_manager.start()
-            app_state.state_manager = state_manager
-            logger.info("State manager started - ready to persist channel state")
-        except RuntimeError as e:
-            logger.error(f"Failed to start state manager: {e}")
-            logger.warning("Continuing without state persistence")
-            state_manager = None
+            await service_registry.start()
+            app_state.service_registry = service_registry
+
+            # REQ-XXX: Start state manager BEFORE connecting to CyTube
+            # This ensures callbacks are ready when initial state events arrive
+            try:
+                logger.info("Starting state manager")
+                state_manager = StateManager(
+                    nats_client, config.cytube.channel, logger, counting_config=config.state_counting
+                )
+                await state_manager.start()
+                app_state.state_manager = state_manager
+                logger.info("State manager started - ready to persist channel state")
+            except RuntimeError as e:
+                logger.error(f"Failed to start state manager: {e}")
+                logger.warning("Continuing without state persistence")
+                state_manager = None
 
         # Connect to CyTube (automatically joins channel and authenticates)
         logger.info(f"Connecting to CyTube: {config.cytube.domain}/{config.cytube.channel}")
@@ -421,9 +432,10 @@ async def main(config_path: str) -> int:
             )
 
             # Publish CyTube connection event
-            await lifecycle.publish_connected(
-                "CyTube", domain=config.cytube.domain, channel=config.cytube.channel
-            )
+            if lifecycle:
+                await lifecycle.publish_connected(
+                    "CyTube", domain=config.cytube.domain, channel=config.cytube.channel
+                )
         except KrytenConnectionError as e:
             # AC-004: CyTube connection failure
             logger.error(f"Failed to connect to CyTube: {e}", exc_info=True)
@@ -434,23 +446,28 @@ async def main(config_path: str) -> int:
                 error=str(e),
             )
             # Cleanup
-            await lifecycle.publish_shutdown(reason="Failed to connect to CyTube")
-            await lifecycle.stop()
+            if lifecycle:
+                await lifecycle.publish_shutdown(reason="Failed to connect to CyTube")
+                await lifecycle.stop()
             if nats_client:
                 await nats_client.disconnect()
             return 1
 
-        # REQ-005: Start EventPublisher after both connector and NATS connected
-        logger.info("Starting event publisher")
-        publisher = EventPublisher(
-            connector=connector,
-            nats_client=nats_client,
-            logger=logger,
-            batch_size=1,
-            retry_attempts=3,
-            retry_delay=1.0,
-        )
-        app_state.event_publisher = publisher
+        # REQ-005: Start EventPublisher (only if NATS is enabled)
+        if nats_client:
+            logger.info("Starting event publisher")
+            publisher = EventPublisher(
+                connector=connector,
+                nats_client=nats_client,
+                logger=logger,
+                batch_size=1,
+                retry_attempts=3,
+                retry_delay=1.0,
+            )
+            app_state.event_publisher = publisher
+        else:
+            logger.info("Event publisher disabled (guest mode - no NATS connection)")
+            publisher = None
 
         # Track reconnect task to avoid multiple concurrent reconnects
         reconnect_task: asyncio.Task | None = None
@@ -477,9 +494,10 @@ async def main(config_path: str) -> int:
                 )
                 await asyncio.sleep(reconnect_delay)
 
-                # Stop the publisher first
-                logger.info("Stopping event publisher for reconnect...")
-                await publisher.stop()
+                # Stop the publisher first (if it exists)
+                if publisher:
+                    logger.info("Stopping event publisher for reconnect...")
+                    await publisher.stop()
 
                 # Disconnect from CyTube (cleanup any remaining state)
                 logger.info("Cleaning up CyTube connection for reconnect...")
@@ -510,10 +528,11 @@ async def main(config_path: str) -> int:
                         note=f"Reconnected after: {reason}",
                     )
 
-                # Restart the publisher
-                nonlocal publisher_task
-                publisher_task = asyncio.create_task(publisher.run())
-                logger.info("Event publisher restarted after reconnect")
+                # Restart the publisher (if it exists)
+                if publisher:
+                    nonlocal publisher_task
+                    publisher_task = asyncio.create_task(publisher.run())
+                    logger.info("Event publisher restarted after reconnect")
 
             except Exception as e:
                 logger.error(f"Failed to reconnect to CyTube: {e}", exc_info=True)
@@ -546,7 +565,9 @@ async def main(config_path: str) -> int:
                 )
                 app_state.shutdown_event.set()
 
-        publisher.on_kicked(handle_kicked)
+        # Register kicked handler (if publisher exists)
+        if publisher:
+            publisher.on_kicked(handle_kicked)
 
         # Register connection loss handler for detecting CyTube disconnects
         def handle_connection_lost(event_name: str, payload: dict):
@@ -593,9 +614,13 @@ async def main(config_path: str) -> int:
 
         watchdog.on_timeout = handle_watchdog_timeout
 
-        # Start publisher task
-        publisher_task = asyncio.create_task(publisher.run())
-        logger.info("Event publisher started")
+        # Start publisher task (if publisher exists)
+        if publisher:
+            publisher_task = asyncio.create_task(publisher.run())
+            logger.info("Event publisher started")
+        else:
+            publisher_task = None
+            logger.info("Event publisher not started (guest mode)")
 
         # Start command subscriber for bidirectional bridge
         if config.commands.enabled:
@@ -634,44 +659,45 @@ async def main(config_path: str) -> int:
         else:
             state_query_handler = None
 
-        # Start user level query handler
+        # Start user level query handler (only if NATS is enabled)
         user_level_subscription = None
-        try:
-            import json
+        if nats_client:
+            try:
+                async def handle_user_level_query(msg):
+                    """Handle NATS queries for logged-in user's level/rank."""
+                    try:
+                        response = {
+                            "success": True,
+                            "rank": connector.user_rank,
+                            "username": config.cytube.user or "guest",
+                        }
 
-            async def handle_user_level_query(msg):
-                """Handle NATS queries for logged-in user's level/rank."""
-                try:
-                    response = {
-                        "success": True,
-                        "rank": connector.user_rank,
-                        "username": config.cytube.user or "guest",
-                    }
-
-                    if msg.reply:
-                        response_bytes = json.dumps(response).encode("utf-8")
-                        await nats_client.publish(msg.reply, response_bytes)
-                        logger.debug(f"Sent user level response: rank={connector.user_rank}")
-
-                except Exception as e:
-                    logger.error(f"Error handling user level query: {e}", exc_info=True)
-                    if msg.reply:
-                        try:
-                            error_response = {"success": False, "error": str(e)}
-                            response_bytes = json.dumps(error_response).encode("utf-8")
+                        if msg.reply:
+                            response_bytes = json.dumps(response).encode("utf-8")
                             await nats_client.publish(msg.reply, response_bytes)
-                        except Exception as reply_error:
-                            logger.error(f"Failed to send error response: {reply_error}")
+                            logger.debug(f"Sent user level response: rank={connector.user_rank}")
 
-            user_level_subject = f"kryten.user_level.{config.cytube.domain}.{config.cytube.channel}"
-            user_level_subscription = await nats_client.subscribe_request_reply(
-                subject=user_level_subject, callback=handle_user_level_query
-            )
-            logger.info(f"User level query handler listening on: {user_level_subject}")
+                    except Exception as e:
+                        logger.error(f"Error handling user level query: {e}", exc_info=True)
+                        if msg.reply:
+                            try:
+                                error_response = {"success": False, "error": str(e)}
+                                response_bytes = json.dumps(error_response).encode("utf-8")
+                                await nats_client.publish(msg.reply, response_bytes)
+                            except Exception as reply_error:
+                                logger.error(f"Failed to send error response: {reply_error}")
 
-        except Exception as e:
-            logger.error(f"Failed to start user level query handler: {e}", exc_info=True)
-            logger.warning("Continuing without user level query endpoint")
+                user_level_subject = f"kryten.user_level.{config.cytube.domain}.{config.cytube.channel}"
+                user_level_subscription = await nats_client.subscribe_request_reply(
+                    subject=user_level_subject, callback=handle_user_level_query
+                )
+                logger.info(f"User level query handler listening on: {user_level_subject}")
+
+            except Exception as e:
+                logger.error(f"Failed to start user level query handler: {e}", exc_info=True)
+                logger.warning("Continuing without user level query endpoint")
+        else:
+            logger.info("User level query handler disabled (guest mode - no NATS)")
 
         # Start health monitor if enabled
         if config.health.enabled:
@@ -692,27 +718,31 @@ async def main(config_path: str) -> int:
         else:
             logger.info("Health monitoring disabled in configuration")
 
-        # Start robot command handler for system.ping etc
-        from .robot_command_handler import RobotCommandHandler
+        # Start robot command handler for system.ping etc (only if NATS is enabled)
+        robot_cmd_handler = None
+        if nats_client:
+            from .robot_command_handler import RobotCommandHandler
 
-        robot_cmd_handler = RobotCommandHandler(
-            nats_client=nats_client,
-            logger=logger,
-            version=__version__,
-            config=config,
-            connector=connector,
-            publisher=publisher,
-            cmd_subscriber=cmd_subscriber,
-            sender=sender,
-        )
-        await robot_cmd_handler.start()
-        logger.info("Robot command handler started (kryten.robot.command)")
+            robot_cmd_handler = RobotCommandHandler(
+                nats_client=nats_client,
+                logger=logger,
+                version=__version__,
+                config=config,
+                connector=connector,
+                publisher=publisher,
+                cmd_subscriber=cmd_subscriber,
+                sender=sender,
+            )
+            await robot_cmd_handler.start()
+            logger.info("Robot command handler started (kryten.robot.command)")
+        else:
+            logger.info("Robot command handler disabled (guest mode - no NATS)")
 
         # REQ-009: Log ready message
         logger.info("=" * 60)
         logger.info("Kryten is ready and processing events")
         if config.cytube.guest_mode:
-            logger.info("Running in GUEST MODE - read-only, commands disabled")
+            logger.info("Running in GUEST MODE - read-only, no NATS, commands disabled")
         if config.commands.enabled:
             logger.info("Bidirectional bridge active - can send and receive")
         else:
@@ -722,13 +752,14 @@ async def main(config_path: str) -> int:
         logger.info("Press Ctrl+C to stop")
         logger.info("=" * 60)
 
-        # Publish startup complete event
-        await lifecycle.publish_startup(
-            domain=config.cytube.domain,
-            channel=config.cytube.channel,
-            commands_enabled=config.commands.enabled,
-            health_enabled=config.health.enabled,
-        )
+        # Publish startup complete event (if lifecycle enabled)
+        if lifecycle:
+            await lifecycle.publish_startup(
+                domain=config.cytube.domain,
+                channel=config.cytube.channel,
+                commands_enabled=config.commands.enabled,
+                health_enabled=config.health.enabled,
+            )
 
         # Wait for shutdown signal
         await app_state.shutdown_event.wait()
