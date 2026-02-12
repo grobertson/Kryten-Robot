@@ -84,7 +84,7 @@ def print_startup_banner(config_path: str) -> None:
         print(f"Domain:  {config.cytube.domain}")
         print(f"Channel: {config.cytube.channel}")
         if config.cytube.guest_mode:
-            print(f"Mode:    GUEST (commands disabled)")
+            print("Mode:    GUEST (commands disabled)")
         print(f"NATS:    {config.nats.servers[0] if config.nats.servers else 'N/A'}")
         print("=" * 60)
         print("NATS Subjects:")
