@@ -2,7 +2,8 @@
   "cytube": {
     "domain": "cytu.be",
     "channel": "Channel-Z",
-    "guest_mode": true
+    "guest_mode": true,
+    "aggressive_reconnect": true
   },
   "nats": {
     "servers": ["nats://localhost:4222"],
@@ -12,16 +13,16 @@
     "reconnect_time_wait": 2
   },
   "health": {
-    "enabled": true,
+    "enabled": false,
     "host": "0.0.0.0",
     "port": 28080
   },
   "commands": {
-    "enabled": true
+    "enabled": false
   },
   "logging": {
     "format": "text",
     "correlation_id": true
   },
-  "log_level": "INFO"
+  "log_level": "ERROR"
 }
