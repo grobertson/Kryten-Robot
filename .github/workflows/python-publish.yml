@@ -70,6 +70,7 @@ jobs:
         with:
           packages-dir: dist/
           skip-existing: true
+          attestations: false  # workflow_call sets workflow_ref=release.yml but attestations check uses that not job_workflow_ref, causing a mismatch with the trusted publisher config
 
       - name: Success notification
         if: success()
