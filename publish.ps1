@@ -1,6 +1,6 @@
 # Kryten-Robot PyPI Publishing Script
-# Version: 0.5.1
-# 
+# (Version is managed in pyproject.toml as the single source of truth)
+#
 # This script automates building and publishing kryten-robot to PyPI.
 # It handles cleaning, building, and optionally publishing the package.
 

@@ -23,6 +23,7 @@ import argparse
 import asyncio
 import json
 import logging
+import random
 import signal
 import sys
 from pathlib import Path
@@ -476,76 +477,113 @@ async def main(config_path: str) -> int:
         publisher_task: asyncio.Task | None = None
 
         async def attempt_reconnect(reason: str = "unknown"):
-            """Attempt to reconnect to CyTube after connection loss."""
+            """Attempt to reconnect to CyTube with exponential backoff.
+
+            Retries until successful, cancelled, or max attempts exhausted.
+            Backoff: base_delay * 2^attempt + jitter, capped at max_delay.
+            """
             nonlocal reconnect_task
-            try:
-                # Log disconnection event
-                audit_logger.log_connection_event(
-                    "disconnect",
-                    "CyTube",
-                    details={"domain": config.cytube.domain, "channel": config.cytube.channel},
-                    error=reason,
-                )
+            base_delay = config.cytube.reconnect_base_delay
+            max_delay = config.cytube.reconnect_max_delay
+            max_attempts = config.cytube.reconnect_max_attempts  # 0 = unlimited
 
-                # Wait a bit before reconnecting to avoid rapid reconnect loops
-                reconnect_delay = 5.0
+            # Log disconnection event (once, before any retries)
+            audit_logger.log_connection_event(
+                "disconnect",
+                "CyTube",
+                details={"domain": config.cytube.domain, "channel": config.cytube.channel},
+                error=reason,
+            )
+
+            # Stop the publisher and clean up (once, before retry loop)
+            if publisher:
+                logger.info("Stopping event publisher for reconnect...")
+                await publisher.stop()
+
+            logger.info("Cleaning up CyTube connection for reconnect...")
+            await connector.disconnect()
+
+            attempt = 0
+            while max_attempts == 0 or attempt < max_attempts:
+                delay = min(base_delay * (2 ** attempt), max_delay)
+                jitter = random.uniform(0, delay * 0.1)
+                delay += jitter
+
                 logger.info(
-                    f"Waiting {reconnect_delay}s before attempting reconnect (reason: {reason})..."
+                    "Waiting %.1fs before reconnect attempt %d (reason: %s)...",
+                    delay, attempt + 1, reason,
                 )
-                await asyncio.sleep(reconnect_delay)
+                try:
+                    await asyncio.sleep(delay)
+                except asyncio.CancelledError:
+                    logger.info("Reconnect cancelled during backoff sleep")
+                    reconnect_task = None
+                    return
 
-                # Stop the publisher first (if it exists)
-                if publisher:
-                    logger.info("Stopping event publisher for reconnect...")
-                    await publisher.stop()
+                try:
+                    logger.info("Attempting to reconnect to CyTube (attempt %d)...", attempt + 1)
+                    await connector.connect()
+                    logger.info("Successfully reconnected to CyTube on attempt %d", attempt + 1)
 
-                # Disconnect from CyTube (cleanup any remaining state)
-                logger.info("Cleaning up CyTube connection for reconnect...")
-                await connector.disconnect()
-
-                # Attempt to reconnect
-                logger.info("Attempting to reconnect to CyTube...")
-                await connector.connect()
-                logger.info("Successfully reconnected to CyTube")
-
-                # Log successful reconnection
-                audit_logger.log_connection_event(
-                    "reconnect",
-                    "CyTube",
-                    details={
-                        "domain": config.cytube.domain,
-                        "channel": config.cytube.channel,
-                        "reason": reason,
-                    },
-                )
-
-                # Publish reconnection event via lifecycle
-                if lifecycle and nats_client and nats_client.is_connected:
-                    await lifecycle.publish_connected(
+                    # Log successful reconnection
+                    audit_logger.log_connection_event(
+                        "reconnect",
                         "CyTube",
-                        domain=config.cytube.domain,
-                        channel=config.cytube.channel,
-                        note=f"Reconnected after: {reason}",
+                        details={
+                            "domain": config.cytube.domain,
+                            "channel": config.cytube.channel,
+                            "reason": reason,
+                            "attempts": attempt + 1,
+                        },
                     )
 
-                # Restart the publisher (if it exists)
-                if publisher:
-                    nonlocal publisher_task
-                    publisher_task = asyncio.create_task(publisher.run())
-                    logger.info("Event publisher restarted after reconnect")
+                    # Publish reconnection event via lifecycle
+                    if lifecycle and nats_client and nats_client.is_connected:
+                        await lifecycle.publish_connected(
+                            "CyTube",
+                            domain=config.cytube.domain,
+                            channel=config.cytube.channel,
+                            note=f"Reconnected after: {reason} (attempt {attempt + 1})",
+                        )
 
-            except Exception as e:
-                logger.error(f"Failed to reconnect to CyTube: {e}", exc_info=True)
-                audit_logger.log_connection_event(
-                    "error",
-                    "CyTube",
-                    details={"domain": config.cytube.domain, "channel": config.cytube.channel},
-                    error=f"Reconnect failed: {e}",
-                )
-                logger.warning("Falling back to graceful shutdown for systemd restart")
-                app_state.shutdown_event.set()
-            finally:
-                reconnect_task = None
+                    # Restart the publisher
+                    if publisher:
+                        nonlocal publisher_task
+                        publisher_task = asyncio.create_task(publisher.run())
+                        logger.info("Event publisher restarted after reconnect")
+
+                    reconnect_task = None
+                    return  # Success — exit the retry loop
+
+                except asyncio.CancelledError:
+                    logger.info("Reconnect cancelled during connection attempt")
+                    reconnect_task = None
+                    return
+                except Exception as e:
+                    logger.warning(
+                        "Reconnect attempt %d failed: %s", attempt + 1, e, exc_info=True
+                    )
+                    audit_logger.log_connection_event(
+                        "error",
+                        "CyTube",
+                        details={"domain": config.cytube.domain, "channel": config.cytube.channel},
+                        error=f"Reconnect attempt {attempt + 1} failed: {e}",
+                    )
+                    # Clean up again before next attempt
+                    try:
+                        await connector.disconnect()
+                    except Exception:
+                        pass
+
+                attempt += 1
+
+            # Exhausted all retries
+            logger.error(
+                "Failed to reconnect after %d attempts — falling back to graceful shutdown",
+                max_attempts,
+            )
+            app_state.shutdown_event.set()
+            reconnect_task = None
 
         # Register kick handler - behavior depends on aggressive_reconnect setting
         def handle_kicked():

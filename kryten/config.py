@@ -34,6 +34,11 @@ class CytubeConfig:
             Anonymous guests do not appear in the channel roster and no login
             event is sent to the server. Commands are always disabled in guest
             mode. Default: False.
+        reconnect_base_delay: Initial delay in seconds before the first reconnect
+            attempt. Subsequent attempts use exponential backoff. Default: 5.0.
+        reconnect_max_delay: Maximum backoff delay in seconds. Default: 300.0 (5 min).
+        reconnect_max_attempts: Maximum number of reconnect attempts before giving
+            up and shutting down. 0 means unlimited (retry forever). Default: 0.
 
     Examples:
         >>> cfg = CytubeConfig(domain="cytu.be", channel="test")
@@ -48,6 +53,9 @@ class CytubeConfig:
     password: str | None = None
     aggressive_reconnect: bool = False
     guest_mode: bool = False
+    reconnect_base_delay: float = 5.0
+    reconnect_max_delay: float = 300.0
+    reconnect_max_attempts: int = 0  # 0 = unlimited
 
 
 @dataclass
