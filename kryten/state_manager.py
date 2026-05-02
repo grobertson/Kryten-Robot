@@ -71,6 +71,13 @@ class StateManager:
         self._users: dict[str, dict[str, Any]] = {}  # username -> user data
         self._current_media: dict[str, Any] | None = None  # Currently playing media
 
+        # Admin state tracking
+        self._motd: str = ""
+        self._channel_css: str = ""
+        self._channel_js: str = ""
+        self._channel_options: dict[str, Any] = {}
+        self._channel_permissions: dict[str, Any] = {}
+
     @property
     def is_running(self) -> bool:
         """Check if state manager is running.
@@ -785,6 +792,48 @@ class StateManager:
             "userlist": self.get_userlist(),
             "current_media": self.get_current_media(),
         }
+
+    # Admin state accessors
+
+    def get_motd(self) -> str:
+        """Get current channel MOTD."""
+        return self._motd
+
+    def set_motd(self, motd: str) -> None:
+        """Update cached MOTD."""
+        self._motd = motd
+
+    def get_channel_css(self) -> str:
+        """Get current channel CSS."""
+        return self._channel_css
+
+    def set_channel_css(self, css: str) -> None:
+        """Update cached channel CSS."""
+        self._channel_css = css
+
+    def get_channel_js(self) -> str:
+        """Get current channel JS."""
+        return self._channel_js
+
+    def set_channel_js(self, js: str) -> None:
+        """Update cached channel JS."""
+        self._channel_js = js
+
+    def get_channel_options(self) -> dict[str, Any]:
+        """Get current channel options."""
+        return self._channel_options.copy()
+
+    def set_channel_options(self, options: dict[str, Any]) -> None:
+        """Update cached channel options."""
+        self._channel_options = options
+
+    def get_channel_permissions(self) -> dict[str, Any]:
+        """Get current channel permissions."""
+        return self._channel_permissions.copy()
+
+    def set_channel_permissions(self, permissions: dict[str, Any]) -> None:
+        """Update cached channel permissions."""
+        self._channel_permissions = permissions
 
 
 __all__ = ["StateManager"]

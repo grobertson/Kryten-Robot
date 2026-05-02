@@ -133,6 +133,27 @@ class StateUpdater:
             self._subscriptions.append(sub)
             self._logger.debug(f"Subscribed to {subject}")
 
+            # Subscribe to admin state events
+            subject = build_subject(self._domain, self._channel, "setMotd")
+            sub = await self._nats._nc.subscribe(subject, cb=self._handle_set_motd)
+            self._subscriptions.append(sub)
+            self._logger.debug(f"Subscribed to {subject}")
+
+            subject = build_subject(self._domain, self._channel, "channelCSSJS")
+            sub = await self._nats._nc.subscribe(subject, cb=self._handle_channel_cssjs)
+            self._subscriptions.append(sub)
+            self._logger.debug(f"Subscribed to {subject}")
+
+            subject = build_subject(self._domain, self._channel, "channelOpts")
+            sub = await self._nats._nc.subscribe(subject, cb=self._handle_channel_opts)
+            self._subscriptions.append(sub)
+            self._logger.debug(f"Subscribed to {subject}")
+
+            subject = build_subject(self._domain, self._channel, "setPermissions")
+            sub = await self._nats._nc.subscribe(subject, cb=self._handle_set_permissions)
+            self._subscriptions.append(sub)
+            self._logger.debug(f"Subscribed to {subject}")
+
             self._running = True
             self._logger.info("State updater started successfully")
 
@@ -328,3 +349,55 @@ class StateUpdater:
 
         except Exception as e:
             self._logger.error(f"Error handling emoteList event: {e}", exc_info=True)
+
+    async def _handle_set_motd(self, msg) -> None:
+        """Handle 'setMotd' event (MOTD updated)."""
+        try:
+            import json
+
+            data = json.loads(msg.data.decode())
+            payload = data.get("payload", {})
+            motd = payload.get("motd", "")
+            self._state.set_motd(motd)
+
+        except Exception as e:
+            self._logger.error(f"Error handling setMotd event: {e}", exc_info=True)
+
+    async def _handle_channel_cssjs(self, msg) -> None:
+        """Handle 'channelCSSJS' event (CSS/JS updated)."""
+        try:
+            import json
+
+            data = json.loads(msg.data.decode())
+            payload = data.get("payload", {})
+            css = payload.get("css", "")
+            js = payload.get("js", "")
+            self._state.set_channel_css(css)
+            self._state.set_channel_js(js)
+
+        except Exception as e:
+            self._logger.error(f"Error handling channelCSSJS event: {e}", exc_info=True)
+
+    async def _handle_channel_opts(self, msg) -> None:
+        """Handle 'channelOpts' event (channel options updated)."""
+        try:
+            import json
+
+            data = json.loads(msg.data.decode())
+            payload = data.get("payload", {})
+            self._state.set_channel_options(payload)
+
+        except Exception as e:
+            self._logger.error(f"Error handling channelOpts event: {e}", exc_info=True)
+
+    async def _handle_set_permissions(self, msg) -> None:
+        """Handle 'setPermissions' event (permissions updated)."""
+        try:
+            import json
+
+            data = json.loads(msg.data.decode())
+            payload = data.get("payload", {})
+            self._state.set_channel_permissions(payload)
+
+        except Exception as e:
+            self._logger.error(f"Error handling setPermissions event: {e}", exc_info=True)

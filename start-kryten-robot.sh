@@ -51,6 +51,11 @@ check_venv() {
         print_warning "Virtual environment incomplete or corrupted"
         return 1
     fi
+
+    if [[ ! -f "$path/pyvenv.cfg" ]]; then
+        print_warning "Virtual environment missing pyvenv.cfg"
+        return 1
+    fi
     
     # Test if python actually works
     if ! "$path/bin/python" -c "import sys" &> /dev/null; then
@@ -67,7 +72,13 @@ create_venv() {
     
     print_info "Creating virtual environment at $path"
     
-    if ! python3 -m venv "$path"; then
+    if command -v uv &> /dev/null; then
+        print_info "Using uv to create virtual environment"
+        if ! uv venv "$path"; then
+            print_error "Failed to create virtual environment with uv"
+            return 1
+        fi
+    elif ! python3 -m venv "$path"; then
         print_error "Failed to create virtual environment"
         return 1
     fi

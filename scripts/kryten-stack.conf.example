@@ -1,0 +1,21 @@
+# Example config for scripts/kryten-stack-screen.sh
+# Copy to scripts/kryten-stack.conf and edit for this server.
+
+# Services included when using target 'all'.
+# You can use spaces or commas.
+# Examples:
+# STACK_COMPONENTS="economy moderator"
+# STACK_COMPONENTS="llm"
+STACK_COMPONENTS="robot userstats moderator economy"
+
+# Optional naming/log overrides.
+# STACK_PREFIX="kryten"
+# STACK_LOG_DIR="/var/log/kryten"
+
+# Optional per-service arguments.
+# ROBOT_ARGS="--config /etc/kryten/robot.json"
+# USERSTATS_ARGS="--config /etc/kryten/userstats.json"
+# MODERATOR_ARGS="--config /etc/kryten/moderator.json"
+# ECONOMY_ARGS="--config /etc/kryten/economy.yaml"
+# LLM_ARGS="--config /etc/kryten/llm.json --log-level INFO"
+s

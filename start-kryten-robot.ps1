@@ -72,6 +72,12 @@ function Test-VenvValid {
     
     $pythonExe = Join-Path $Path "Scripts\python.exe"
     $pipExe = Join-Path $Path "Scripts\pip.exe"
+    $pyvenvCfg = Join-Path $Path "pyvenv.cfg"
+
+    if (-not (Test-Path $pyvenvCfg)) {
+        Write-Warning "Virtual environment missing pyvenv.cfg"
+        return $false
+    }
     
     if (-not (Test-Path $pythonExe) -or -not (Test-Path $pipExe)) {
         Write-Warning "Virtual environment incomplete or corrupted"
@@ -95,7 +101,14 @@ function New-VirtualEnvironment {
     Write-Info "Creating virtual environment at $Path"
     
     try {
-        & python -m venv $Path
+        $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
+        if ($uvCmd) {
+            Write-Info "Using uv to create virtual environment"
+            & uv venv $Path
+        } else {
+            Write-Info "Using python -m venv to create virtual environment"
+            & python -m venv $Path
+        }
         
         if (-not (Test-VenvValid $Path)) {
             throw "Failed to create valid virtual environment"

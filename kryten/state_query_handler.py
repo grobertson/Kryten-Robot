@@ -176,6 +176,11 @@ class StateQueryHandler:
                 "state.all": self._handle_state_all,
                 "state.user": self._handle_state_user,
                 "state.profiles": self._handle_state_profiles,
+                "state.motd": self._handle_state_motd,
+                "state.css": self._handle_state_css,
+                "state.js": self._handle_state_js,
+                "state.options": self._handle_state_options,
+                "state.permissions": self._handle_state_permissions,
                 "system.health": self._handle_system_health,
                 "system.channels": self._handle_system_channels,
                 "system.version": self._handle_system_version,
@@ -260,6 +265,26 @@ class StateQueryHandler:
     async def _handle_state_profiles(self, request: dict) -> dict:
         """Get all user profiles."""
         return {"profiles": self._state_manager.get_all_profiles()}
+
+    async def _handle_state_motd(self, request: dict) -> dict:
+        """Get channel MOTD."""
+        return {"motd": self._state_manager.get_motd()}
+
+    async def _handle_state_css(self, request: dict) -> dict:
+        """Get channel CSS."""
+        return {"css": self._state_manager.get_channel_css()}
+
+    async def _handle_state_js(self, request: dict) -> dict:
+        """Get channel JS."""
+        return {"js": self._state_manager.get_channel_js()}
+
+    async def _handle_state_options(self, request: dict) -> dict:
+        """Get channel options."""
+        return {"options": self._state_manager.get_channel_options()}
+
+    async def _handle_state_permissions(self, request: dict) -> dict:
+        """Get channel permissions."""
+        return {"permissions": self._state_manager.get_channel_permissions()}
 
     async def _handle_system_health(self, request: dict) -> dict:
         """Get service health status."""

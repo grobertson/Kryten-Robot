@@ -137,6 +137,47 @@ class RobotCommandHandler:
                 "seek": self._handle_seek,
                 "voteskip": self._handle_voteskip,
                 "assignLeader": self._handle_assign_leader,
+                "playNext": self._handle_play_next,
+                # Phase 2: Admin commands (rank 3+)
+                "setMotd": self._handle_set_motd,
+                "set_motd": self._handle_set_motd,
+                "setChannelCSS": self._handle_set_channel_css,
+                "set_channel_css": self._handle_set_channel_css,
+                "setChannelJS": self._handle_set_channel_js,
+                "set_channel_js": self._handle_set_channel_js,
+                "setOptions": self._handle_set_options,
+                "set_options": self._handle_set_options,
+                "setPermissions": self._handle_set_permissions,
+                "set_permissions": self._handle_set_permissions,
+                "updateEmote": self._handle_update_emote,
+                "update_emote": self._handle_update_emote,
+                "removeEmote": self._handle_remove_emote,
+                "remove_emote": self._handle_remove_emote,
+                "addFilter": self._handle_add_filter,
+                "add_filter": self._handle_add_filter,
+                "updateFilter": self._handle_update_filter,
+                "update_filter": self._handle_update_filter,
+                "removeFilter": self._handle_remove_filter,
+                "remove_filter": self._handle_remove_filter,
+                # Phase 3: Advanced admin commands
+                "newPoll": self._handle_new_poll,
+                "new_poll": self._handle_new_poll,
+                "vote": self._handle_vote,
+                "closePoll": self._handle_close_poll,
+                "close_poll": self._handle_close_poll,
+                "setChannelRank": self._handle_set_channel_rank,
+                "set_channel_rank": self._handle_set_channel_rank,
+                "requestChannelRanks": self._handle_request_channel_ranks,
+                "request_channel_ranks": self._handle_request_channel_ranks,
+                "requestBanlist": self._handle_request_banlist,
+                "request_banlist": self._handle_request_banlist,
+                "unban": self._handle_unban,
+                "readChanLog": self._handle_read_chan_log,
+                "read_chan_log": self._handle_read_chan_log,
+                "searchLibrary": self._handle_search_library,
+                "search_library": self._handle_search_library,
+                "deleteFromLibrary": self._handle_delete_from_library,
+                "delete_from_library": self._handle_delete_from_library,
             }
 
             handler = handlers.get(command)
@@ -469,6 +510,299 @@ class RobotCommandHandler:
         if success:
             return {"success": True}
         return {"success": False, "error": "Failed to assign leader"}
+
+    # --- Phase 2: Admin commands (rank 3+) ---
+
+    async def _handle_play_next(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle play next command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        success = await self.sender.play_next()
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to play next"}
+
+    async def _handle_set_motd(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set MOTD command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        motd = args.get("motd", "")
+        success = await self.sender.set_motd(motd)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to set MOTD"}
+
+    async def _handle_set_channel_css(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set channel CSS command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        css = args.get("css", "")
+        success = await self.sender.set_channel_css(css)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to set channel CSS"}
+
+    async def _handle_set_channel_js(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set channel JS command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        js = args.get("js", "")
+        success = await self.sender.set_channel_js(js)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to set channel JS"}
+
+    async def _handle_set_options(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set channel options command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        options = args.get("options", {})
+        if not options:
+            raise ValueError("Missing options")
+
+        success = await self.sender.set_options(options)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to set options"}
+
+    async def _handle_set_permissions(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set channel permissions command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        permissions = args.get("permissions", {})
+        if not permissions:
+            raise ValueError("Missing permissions")
+
+        success = await self.sender.set_permissions(permissions)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to set permissions"}
+
+    async def _handle_update_emote(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle update emote command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        name = args.get("name")
+        image = args.get("image")
+        source = args.get("source", "imgur")
+
+        if not name or not image:
+            raise ValueError("Missing name or image")
+
+        success = await self.sender.update_emote(name, image, source)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to update emote"}
+
+    async def _handle_remove_emote(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle remove emote command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        name = args.get("name")
+        if not name:
+            raise ValueError("Missing name")
+
+        success = await self.sender.remove_emote(name)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to remove emote"}
+
+    async def _handle_add_filter(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle add filter command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        name = args.get("name")
+        source = args.get("source")
+        flags = args.get("flags", "gi")
+        replace = args.get("replace", "")
+        filterlinks = args.get("filterlinks", False)
+        active = args.get("active", True)
+
+        if not name or not source:
+            raise ValueError("Missing name or source")
+
+        success = await self.sender.add_filter(name, source, flags, replace, filterlinks, active)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to add filter"}
+
+    async def _handle_update_filter(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle update filter command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        name = args.get("name")
+        source = args.get("source")
+        flags = args.get("flags", "gi")
+        replace = args.get("replace", "")
+        filterlinks = args.get("filterlinks", False)
+        active = args.get("active", True)
+
+        if not name or not source:
+            raise ValueError("Missing name or source")
+
+        success = await self.sender.update_filter(name, source, flags, replace, filterlinks, active)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to update filter"}
+
+    async def _handle_remove_filter(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle remove filter command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        name = args.get("name")
+        if not name:
+            raise ValueError("Missing name")
+
+        success = await self.sender.remove_filter(name)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to remove filter"}
+
+    # --- Phase 3: Advanced admin commands ---
+
+    async def _handle_new_poll(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle new poll command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        title = args.get("title")
+        options = args.get("options", [])
+        obscured = args.get("obscured", False)
+        timeout = args.get("timeout", 0)
+
+        if not title or not options:
+            raise ValueError("Missing title or options")
+
+        success = await self.sender.new_poll(title, options, obscured, timeout)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to create poll"}
+
+    async def _handle_vote(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle vote command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        option = args.get("option")
+        if option is None:
+            raise ValueError("Missing option")
+
+        success = await self.sender.vote(int(option))
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to vote"}
+
+    async def _handle_close_poll(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle close poll command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        success = await self.sender.close_poll()
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to close poll"}
+
+    async def _handle_set_channel_rank(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle set channel rank command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        username = args.get("username") or args.get("name")
+        rank = args.get("rank")
+
+        if not username or rank is None:
+            raise ValueError("Missing username or rank")
+
+        success = await self.sender.set_channel_rank(username, int(rank))
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to set channel rank"}
+
+    async def _handle_request_channel_ranks(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle request channel ranks command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        success = await self.sender.request_channel_ranks()
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to request channel ranks"}
+
+    async def _handle_request_banlist(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle request banlist command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        success = await self.sender.request_banlist()
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to request banlist"}
+
+    async def _handle_unban(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle unban command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        ban_id = args.get("ban_id") or args.get("id")
+        if ban_id is None:
+            raise ValueError("Missing ban_id")
+
+        success = await self.sender.unban(int(ban_id))
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to unban"}
+
+    async def _handle_read_chan_log(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle read channel log command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        count = args.get("count", 100)
+        success = await self.sender.read_chan_log(int(count))
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to read channel log"}
+
+    async def _handle_search_library(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle search library command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        query = args.get("query")
+        source = args.get("source", "library")
+
+        if not query:
+            raise ValueError("Missing query")
+
+        success = await self.sender.search_library(query, source)
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to search library"}
+
+    async def _handle_delete_from_library(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Handle delete from library command."""
+        if not self.sender:
+            raise RuntimeError("CytubeEventSender not available")
+
+        media_id = args.get("media_id") or args.get("id")
+        if not media_id:
+            raise ValueError("Missing media_id")
+
+        success = await self.sender.delete_from_library(str(media_id))
+        if success:
+            return {"success": True}
+        return {"success": False, "error": "Failed to delete from library"}
 
     async def _send_response(self, reply_to: str | None, response: dict) -> None:
         """Send response to reply subject.
