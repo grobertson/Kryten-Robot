@@ -6,6 +6,7 @@ Handles system commands on the kryten.robot.command subject, including:
 - system.stats - Service statistics
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -15,6 +16,7 @@ from typing import Any
 from nats.aio.subscription import Subscription
 
 from .nats_client import NatsClient
+from .subject_builder import build_subject
 
 
 class RobotCommandHandler:
@@ -68,6 +70,55 @@ class RobotCommandHandler:
             await self.nats.unsubscribe(self._subscription)
             self._subscription = None
         self.logger.info("Robot command handler stopped")
+
+    async def _await_cytube_event(
+        self,
+        event_name: str,
+        sender_coro,
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        """Send a request to CyTube and await the async event response.
+
+        Subscribes to the NATS subject for the expected response event,
+        sends the request via the sender coroutine, then awaits the response
+        with a timeout.
+
+        Args:
+            event_name: CyTube event name expected in response (e.g. "banlist")
+            sender_coro: Awaitable that triggers the CyTube request
+            timeout: Seconds to wait for the response event
+
+        Returns:
+            Parsed event payload dict
+
+        Raises:
+            TimeoutError: If CyTube does not respond within timeout
+            RuntimeError: If NATS connection is unavailable
+        """
+        if not self.nats._nc:
+            raise RuntimeError("NATS connection unavailable")
+
+        channel = self.config.cytube.channel if self.config else "lounge"
+        domain = self.config.cytube.domain if self.config else "cytu.be"
+        subject = build_subject(domain, channel, event_name)
+
+        # Subscribe without callback to use next_msg() pattern
+        sub = await self.nats._nc.subscribe(subject)
+        try:
+            # Send the request to CyTube
+            success = await sender_coro
+            if not success:
+                raise RuntimeError(f"Failed to send {event_name} request to CyTube")
+
+            # Await the response event
+            msg = await sub.next_msg(timeout=timeout)
+            return json.loads(msg.data.decode())
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"CyTube did not respond with '{event_name}' within {timeout}s"
+            )
+        finally:
+            await sub.unsubscribe()
 
     async def _handle_command(self, msg) -> None:
         """Handle incoming command messages.
@@ -730,24 +781,34 @@ class RobotCommandHandler:
         return {"success": False, "error": "Failed to set channel rank"}
 
     async def _handle_request_channel_ranks(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle request channel ranks command."""
+        """Handle request channel ranks command.
+
+        Sends requestChannelRanks to CyTube and awaits the channelRanks event.
+        """
         if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
 
-        success = await self.sender.request_channel_ranks()
-        if success:
-            return {"success": True}
-        return {"success": False, "error": "Failed to request channel ranks"}
+        data = await self._await_cytube_event(
+            "channelRanks",
+            self.sender.request_channel_ranks(),
+            timeout=5.0,
+        )
+        return {"ranks": data}
 
     async def _handle_request_banlist(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle request banlist command."""
+        """Handle request banlist command.
+
+        Sends requestBanlist to CyTube and awaits the banlist event.
+        """
         if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
 
-        success = await self.sender.request_banlist()
-        if success:
-            return {"success": True}
-        return {"success": False, "error": "Failed to request banlist"}
+        data = await self._await_cytube_event(
+            "banlist",
+            self.sender.request_banlist(),
+            timeout=5.0,
+        )
+        return {"banlist": data}
 
     async def _handle_unban(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle unban command."""
@@ -764,18 +825,26 @@ class RobotCommandHandler:
         return {"success": False, "error": "Failed to unban"}
 
     async def _handle_read_chan_log(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle read channel log command."""
+        """Handle read channel log command.
+
+        Sends readChanLog to CyTube and awaits the readChanLog event.
+        """
         if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
 
         count = args.get("count", 100)
-        success = await self.sender.read_chan_log(int(count))
-        if success:
-            return {"success": True}
-        return {"success": False, "error": "Failed to read channel log"}
+        data = await self._await_cytube_event(
+            "readChanLog",
+            self.sender.read_chan_log(int(count)),
+            timeout=5.0,
+        )
+        return {"log": data}
 
     async def _handle_search_library(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle search library command."""
+        """Handle search library command.
+
+        Sends searchMedia to CyTube and awaits the searchResults event.
+        """
         if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
 
@@ -785,10 +854,12 @@ class RobotCommandHandler:
         if not query:
             raise ValueError("Missing query")
 
-        success = await self.sender.search_library(query, source)
-        if success:
-            return {"success": True}
-        return {"success": False, "error": "Failed to search library"}
+        data = await self._await_cytube_event(
+            "searchResults",
+            self.sender.search_library(query, source),
+            timeout=5.0,
+        )
+        return {"results": data}
 
     async def _handle_delete_from_library(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle delete from library command."""
