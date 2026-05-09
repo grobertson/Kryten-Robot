@@ -64,6 +64,7 @@ class StateManager:
         self._kv_emotes: KeyValue | None = None
         self._kv_playlist: KeyValue | None = None
         self._kv_userlist: KeyValue | None = None
+        self._kv_state: KeyValue | None = None
 
         # State tracking
         self._emotes: list[dict[str, Any]] = []
@@ -268,6 +269,20 @@ class StateManager:
                 )
                 self._logger.info("Created userlist KV bucket")
 
+            # State bucket (MOTD, CSS, JS, options, permissions)
+            try:
+                self._kv_state = await js.key_value(bucket=f"{bucket_prefix}_state")
+                self._logger.debug("Bound to existing state KV bucket")
+            except Exception:
+                self._kv_state = await js.create_key_value(
+                    config=api.KeyValueConfig(
+                        bucket=f"{bucket_prefix}_state",
+                        description=f"Kryten {self._channel} admin state",
+                        max_value_size=1024 * 1024,  # 1MB max
+                    )
+                )
+                self._logger.info("Created state KV bucket")
+
             self._running = True
             self._logger.info("State manager started")
 
@@ -321,6 +336,7 @@ class StateManager:
         self._kv_emotes = None
         self._kv_playlist = None
         self._kv_userlist = None
+        self._kv_state = None
         self._running = False
 
         self._logger.info("State manager stopped")
@@ -799,25 +815,40 @@ class StateManager:
         """Get current channel MOTD."""
         return self._motd
 
-    def set_motd(self, motd: str) -> None:
-        """Update cached MOTD."""
+    async def set_motd(self, motd: str) -> None:
+        """Update cached MOTD and persist to KV."""
         self._motd = motd
+        if self._kv_state is not None:
+            try:
+                await self._kv_state.put("motd", motd.encode())
+            except Exception as e:
+                self._logger.error(f"Failed to persist MOTD to KV: {e}")
 
     def get_channel_css(self) -> str:
         """Get current channel CSS."""
         return self._channel_css
 
-    def set_channel_css(self, css: str) -> None:
-        """Update cached channel CSS."""
+    async def set_channel_css(self, css: str) -> None:
+        """Update cached channel CSS and persist to KV."""
         self._channel_css = css
+        if self._kv_state is not None:
+            try:
+                await self._kv_state.put("css", css.encode())
+            except Exception as e:
+                self._logger.error(f"Failed to persist CSS to KV: {e}")
 
     def get_channel_js(self) -> str:
         """Get current channel JS."""
         return self._channel_js
 
-    def set_channel_js(self, js: str) -> None:
-        """Update cached channel JS."""
+    async def set_channel_js(self, js: str) -> None:
+        """Update cached channel JS and persist to KV."""
         self._channel_js = js
+        if self._kv_state is not None:
+            try:
+                await self._kv_state.put("js", js.encode())
+            except Exception as e:
+                self._logger.error(f"Failed to persist JS to KV: {e}")
 
     def get_channel_options(self) -> dict[str, Any]:
         """Get current channel options."""

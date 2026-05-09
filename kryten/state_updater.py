@@ -358,7 +358,7 @@ class StateUpdater:
             data = json.loads(msg.data.decode())
             payload = data.get("payload", {})
             motd = payload.get("motd", "")
-            self._state.set_motd(motd)
+            await self._state.set_motd(motd)
 
         except Exception as e:
             self._logger.error(f"Error handling setMotd event: {e}", exc_info=True)
@@ -372,8 +372,8 @@ class StateUpdater:
             payload = data.get("payload", {})
             css = payload.get("css", "")
             js = payload.get("js", "")
-            self._state.set_channel_css(css)
-            self._state.set_channel_js(js)
+            await self._state.set_channel_css(css)
+            await self._state.set_channel_js(js)
 
         except Exception as e:
             self._logger.error(f"Error handling channelCSSJS event: {e}", exc_info=True)
