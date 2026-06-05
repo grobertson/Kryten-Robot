@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-06-04
+
+### Changed
+- **`addvideo` now reports CyTube `queueFail` in the command response** — `_handle_add_video` registers a `queueFail` callback alongside the existing `queue` callback. When CyTube rejects the media (e.g. a manifest URL that returns HTTP 302), the command resolves immediately with `{success: false, error: <reason>, queue_fail: {...}}` instead of waiting out the 8-second timeout. The failure reason (matched to the requested media id when available) becomes the single source of truth so callers no longer have to listen on the `queueFail` events channel. The event is still published to `kryten.events.cytube.channel-z.queuefail` for backward compatibility.
+
 ## [0.8.1] - 2025-12-31
 
 ### Changed

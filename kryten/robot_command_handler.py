@@ -412,19 +412,35 @@ class RobotCommandHandler:
         if not self.connector:
             raise RuntimeError("CytubeConnector not available")
 
+        requested_id = args.get("id") or args.get("url")
+
         loop = asyncio.get_running_loop()
-        uid_future: asyncio.Future[int | None] = loop.create_future()
+        # Resolves to {"uid": int|None} on success or {"error": str, "detail": dict} on queueFail
+        result_future: asyncio.Future[dict[str, Any]] = loop.create_future()
 
         def _on_queue_event(event_name: str, payload: dict) -> None:
             # Called synchronously from _fire_callbacks while the event loop is running.
             # Resolve only the FIRST matching event; ignore subsequent ones.
-            if uid_future.done():
+            if result_future.done():
                 return
             item = payload.get("item", {})
             uid = item.get("uid")
-            uid_future.set_result(int(uid) if uid is not None else None)
+            result_future.set_result({"uid": int(uid) if uid is not None else None})
+
+        def _on_queue_fail(event_name: str, payload: dict) -> None:
+            if result_future.done():
+                return
+            # CyTube sends {msg, link, id}. Only resolve on the failure for the
+            # item we just requested (when an id is available to compare).
+            fail_id = payload.get("id") or payload.get("link")
+            if requested_id and fail_id and fail_id != requested_id:
+                return
+            result_future.set_result(
+                {"error": payload.get("msg", "Queue failed"), "detail": payload}
+            )
 
         self.connector.on_event("queue", _on_queue_event)
+        self.connector.on_event("queueFail", _on_queue_fail)
         try:
             success = await self.sender.add_video(
                 url=args.get("url"),
@@ -438,15 +454,22 @@ class RobotCommandHandler:
                 return {"success": False, "error": "Failed to add video"}
 
             try:
-                uid = await asyncio.wait_for(uid_future, timeout=8.0)
+                outcome = await asyncio.wait_for(result_future, timeout=8.0)
             except asyncio.TimeoutError:
                 self.logger.warning("Timed out waiting for CyTube queue confirmation")
-                uid = None
+                return {"success": True, "uid": None}
 
         finally:
             self.connector.off_event("queue", _on_queue_event)
+            self.connector.off_event("queueFail", _on_queue_fail)
 
-        return {"success": True, "uid": uid}
+        if "error" in outcome:
+            return {
+                "success": False,
+                "error": outcome["error"],
+                "queue_fail": outcome.get("detail", {}),
+            }
+        return {"success": True, "uid": outcome.get("uid")}
 
     async def _handle_delete_video(self, args: dict[str, Any]) -> dict[str, Any]:
         """Handle delete video command."""
