@@ -355,6 +355,10 @@ async def main(config_path: str) -> int:
                         elif event_name == "changeMedia":
                             # Currently playing media changed
                             await state_manager.update_current_media(payload)
+                        elif event_name == "setCurrent":
+                            # UID of the now-playing playlist item (emitted by
+                            # CyTube just before changeMedia on every change).
+                            await state_manager.set_current_uid(payload)
                     except Exception as e:
                         logger.error(f"Error handling state event {event_name}: {e}", exc_info=True)
 
@@ -373,6 +377,7 @@ async def main(config_path: str) -> int:
                 "userLeave",
                 "setUserRank",
                 "changeMedia",
+                "setCurrent",
             ]
             for event in state_events:
                 connector.on_event(event, handle_state_event)

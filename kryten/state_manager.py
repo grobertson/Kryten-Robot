@@ -71,6 +71,7 @@ class StateManager:
         self._playlist: list[dict[str, Any]] = []
         self._users: dict[str, dict[str, Any]] = {}  # username -> user data
         self._current_media: dict[str, Any] | None = None  # Currently playing media
+        self._current_uid: Any = None  # UID of currently playing playlist item (setCurrent)
 
         # Admin state tracking
         self._motd: str = ""
@@ -556,6 +557,14 @@ class StateManager:
 
         Called when 'changeMedia' event received from CyTube.
 
+        CyTube's ``changeMedia`` payload carries the media metadata
+        (``id``, ``title``, ``seconds``, ``type``) but not the playlist
+        ``uid``. The uid is delivered separately via ``setCurrent`` (which
+        CyTube emits immediately before ``changeMedia``). We merge the known
+        current uid into the persisted object so downstream consumers can map
+        the now-playing item back to its playlist position. If no uid is known
+        we fall back to matching the media against the playlist by id/type.
+
         Args:
             media_data: Media data dict with 'id', 'title', 'seconds', 'type', etc.
 
@@ -568,17 +577,77 @@ class StateManager:
             return
 
         try:
-            self._current_media = media_data
+            media = dict(media_data) if isinstance(media_data, dict) else media_data
+
+            # Attach the playlist uid. Prefer one already present on the payload,
+            # then the authoritative uid from setCurrent, then a playlist lookup.
+            if isinstance(media, dict) and media.get("uid") is None:
+                uid = self._current_uid
+                if uid is None:
+                    uid = self._resolve_uid_for_media(media)
+                if uid is not None:
+                    media["uid"] = uid
+
+            self._current_media = media
 
             # Store as JSON in playlist bucket with 'current' key
-            media_json = json.dumps(media_data).encode()
+            media_json = json.dumps(media).encode()
             await self._kv_playlist.put("current", media_json)
 
-            title = media_data.get("title", "Unknown")[:60]
+            title = (media.get("title", "Unknown") if isinstance(media, dict) else "Unknown")[:60]
             self._logger.info(f"Updated current media: {title}")
 
         except Exception as e:
             self._logger.error(f"Failed to update current media: {e}", exc_info=True)
+
+    async def set_current_uid(self, uid: Any) -> None:
+        """Record the UID of the currently playing playlist item.
+
+        Called when CyTube emits the ``setCurrent`` event. CyTube fires this
+        immediately before ``changeMedia`` on every media change, carrying the
+        playlist uid of the item that just started playing. We remember it so
+        :meth:`update_current_media` can stamp the uid onto the persisted
+        now-playing object, and we re-persist if the media is already known
+        (covers any event-ordering variance).
+
+        Args:
+            uid: Playlist uid of the now-playing item.
+        """
+        self._current_uid = uid
+
+        if not self._running or self._kv_playlist is None:
+            return
+
+        # If we already have current media, ensure its uid stays in sync.
+        if isinstance(self._current_media, dict) and self._current_media.get("uid") != uid:
+            try:
+                self._current_media["uid"] = uid
+                media_json = json.dumps(self._current_media).encode()
+                await self._kv_playlist.put("current", media_json)
+                self._logger.debug(f"Set current uid: {uid}")
+            except Exception as e:
+                self._logger.error(f"Failed to update current uid: {e}", exc_info=True)
+
+    def _resolve_uid_for_media(self, media: dict[str, Any]) -> Any:
+        """Best-effort lookup of a playlist uid for a now-playing media object.
+
+        Matches by media id (and type when available) against the cached
+        playlist. Handles both flat playlist items (``{uid, id, type}``) and
+        CyTube's nested form (``{uid, media: {id, type}}``). Returns ``None``
+        when no confident match is found.
+        """
+        media_id = media.get("id")
+        if media_id is None:
+            return None
+        media_type = media.get("type")
+        for item in self._playlist:
+            inner = item.get("media") if isinstance(item.get("media"), dict) else item
+            if inner.get("id") == media_id and (
+                media_type is None or inner.get("type") == media_type
+            ):
+                return item.get("uid")
+        return None
+
 
     def get_current_media(self) -> dict[str, Any] | None:
         """Get currently playing media.

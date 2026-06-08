@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-06-07
+
+### Added
+- **`uid` on persisted now-playing state** — The `current` key in the `kryten_{channel}_playlist` KV bucket now includes the playlist `uid` of the now-playing item. CyTube's `changeMedia` payload carries only media metadata (`id`, `title`, `seconds`, `type`) with no uid; the uid arrives separately via the `setCurrent` event (emitted immediately before `changeMedia` on every media change). `StateManager` now listens for `setCurrent`, tracks the authoritative current uid, and stamps it onto the persisted now-playing object. If no uid is known it falls back to matching the media against the cached playlist by `id`/`type`. This lets downstream consumers (e.g. kryten-webqueue) map the now-playing item back to its playlist position for relative queue insertion.
+
 ## [1.8.0] - 2026-06-04
 
 ### Changed
