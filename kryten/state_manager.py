@@ -783,6 +783,49 @@ class StateManager:
         except Exception as e:
             self._logger.error(f"Failed to update user: {e}", exc_info=True)
 
+    async def set_user_afk(self, username: str, afk: bool) -> None:
+        """Set a user's AFK flag, merging it into their ``meta`` in place.
+
+        Called when a ``setAFK`` event is received. CyTube only emits the
+        changed flag, so the rest of the stored user object (rank, profile,
+        other ``meta`` keys) must be preserved. If the user is not currently in
+        the userlist the call is a no-op (a following ``addUser``/``userlist``
+        carries the authoritative state).
+
+        Args:
+            username: Username whose AFK state changed.
+            afk: New AFK flag.
+
+        Examples:
+            >>> await manager.set_user_afk("Bob", True)
+        """
+        if not self._running or self._kv_userlist is None:
+            return
+
+        try:
+            if not username:
+                return
+
+            user = self._users.get(username)
+            if user is None:
+                # User not tracked yet; nothing to merge into.
+                return
+
+            meta = dict(user.get("meta") or {})
+            if meta.get("afk") == afk:
+                return  # No change; avoid a redundant KV write.
+            meta["afk"] = afk
+            self._users[username] = {**user, "meta": meta}
+
+            # Update KV store
+            userlist_json = json.dumps(list(self._users.values())).encode()
+            await self._kv_userlist.put("users", userlist_json)
+
+            self._logger.debug(f"Set AFK for {username}: {afk}")
+
+        except Exception as e:
+            self._logger.error(f"Failed to set AFK for user: {e}", exc_info=True)
+
     # ========================================================================
     # State Retrieval
     # ========================================================================

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-06-13
+
+### Added
+- **AFK state is now tracked live via the `setAFK` event** — `StateManager` previously only captured a user's `meta.afk` flag at join time (from `userlist`/`addUser`), so it went stale as soon as a user toggled AFK afterward. The connector now subscribes to CyTube's `setAFK` event and a new `StateManager.set_user_afk(username, afk)` merges the flag into the stored user's `meta` in place — preserving rank, profile, and other `meta` keys — and persists it to the `*_userlist` KV bucket. Unknown users and no-op toggles are skipped (no redundant KV write). This lets downstream consumers (e.g. kryten-webqueue presence-based refunds) rely on `state.user`'s `meta.afk` being current.
+
 ## [1.9.0] - 2026-06-07
 
 ### Added

@@ -352,6 +352,13 @@ async def main(config_path: str) -> int:
                             rank = payload.get("rank")
                             if name is not None:
                                 await state_manager.update_user({"name": name, "rank": rank})
+                        elif event_name == "setAFK":
+                            # User AFK flag toggled. CyTube emits only
+                            # {name, afk}; merge it into the stored user's meta
+                            # without clobbering rank/profile/other meta.
+                            name = payload.get("name")
+                            if name is not None:
+                                await state_manager.set_user_afk(name, bool(payload.get("afk")))
                         elif event_name == "changeMedia":
                             # Currently playing media changed
                             await state_manager.update_current_media(payload)
@@ -376,6 +383,7 @@ async def main(config_path: str) -> int:
                 "addUser",
                 "userLeave",
                 "setUserRank",
+                "setAFK",
                 "changeMedia",
                 "setCurrent",
             ]
