@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-06-21
+
+### Fixed
+- **Channel CSS/JS and MOTD are now persisted to the state KV.** The in-process state callback handled playlist, userlist, emote, AFK and now-playing events but had no branch for `channelCSSJS` (or `setMotd`), so the `kryten_{channel}_state` KV bucket was never populated — it stayed at zero values from creation. (The `StateUpdater` class that *would* have subscribed to `channelCSSJS` over NATS is not wired into startup.) Downstream consumers reading channel CSS — notably kryten-economy's chat-color vanity, which rebuilds the channel's custom CSS — therefore always read an empty string, and a consumer that trusted that empty read could destroy the channel's hand-maintained CSS. The callback now handles `channelCSSJS` (persisting both CSS and JS via `StateManager.set_channel_css`/`set_channel_js`) and `setMotd`. Because the callback is registered *before* connecting, the initial channel frame CyTube sends on join is captured, so the state KV is seeded without waiting for an admin to edit the CSS.
+
 ## [1.10.0] - 2026-06-13
 
 ### Added

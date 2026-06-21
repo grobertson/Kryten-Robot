@@ -366,6 +366,18 @@ async def main(config_path: str) -> int:
                             # UID of the now-playing playlist item (emitted by
                             # CyTube just before changeMedia on every change).
                             await state_manager.set_current_uid(payload)
+                        elif event_name == "channelCSSJS":
+                            # Channel custom CSS/JS. CyTube emits this on join
+                            # (initial channel frame) and whenever an admin edits
+                            # it. Persisting it to KV lets downstream services
+                            # (e.g. kryten-economy chat-color vanity) read the
+                            # channel's real CSS instead of an empty string —
+                            # without which they cannot safely rewrite it.
+                            await state_manager.set_channel_css(payload.get("css", "") or "")
+                            await state_manager.set_channel_js(payload.get("js", "") or "")
+                        elif event_name == "setMotd":
+                            # Channel MOTD (also part of the admin-state bucket).
+                            await state_manager.set_motd(payload.get("motd", "") or "")
                     except Exception as e:
                         logger.error(f"Error handling state event {event_name}: {e}", exc_info=True)
 
@@ -386,6 +398,8 @@ async def main(config_path: str) -> int:
                 "setAFK",
                 "changeMedia",
                 "setCurrent",
+                "channelCSSJS",
+                "setMotd",
             ]
             for event in state_events:
                 connector.on_event(event, handle_state_event)
