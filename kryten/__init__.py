@@ -4,17 +4,26 @@ This package provides a standalone Socket.IO client that connects to CyTube
 chat servers and publishes events to NATS for consumption by Rosey-Robot plugins.
 """
 
-import re as _re
-from pathlib import Path as _Path
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _get_pkg_version
 
 try:
-    _pyproject = _Path(__file__).parent.parent / "pyproject.toml"
-    _match = _re.search(r'^version\s*=\s*"([^"]+)"', _pyproject.read_text(), _re.MULTILINE)
-    __version__: str = _match.group(1) if _match else "0.0.0"
-except Exception:
-    __version__ = "0.0.0"
+    # Installed package: importlib.metadata reads the wheel/egg-info metadata.
+    __version__: str = _get_pkg_version("kryten-robot")
+except PackageNotFoundError:
+    # Running from source without an editable install.
+    # Read the version directly from pyproject.toml so logs and lifecycle
+    # events report the real version instead of 0.0.0.
+    try:
+        import re as _re
+        from pathlib import Path as _Path
 
-del _re, _Path
+        _pyproject = _Path(__file__).parent.parent / "pyproject.toml"
+        _match = _re.search(r'^version\s*=\s*"([^"]+)"', _pyproject.read_text(), _re.MULTILINE)
+        __version__ = _match.group(1) if _match else "0.0.0"
+        del _re, _Path, _pyproject, _match
+    except Exception:
+        __version__ = "0.0.0"
 
 __author__ = "Kryten Robot Team"
 __license__ = "MIT"
