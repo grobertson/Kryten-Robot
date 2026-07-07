@@ -377,7 +377,9 @@ async def main(config_path: str) -> int:
                             await state_manager.set_channel_js(payload.get("js", "") or "")
                         elif event_name == "setMotd":
                             # Channel MOTD (also part of the admin-state bucket).
-                            await state_manager.set_motd(payload.get("motd", "") or "")
+                            # CyTube emits setMotd with a bare string, not a dict.
+                            motd = payload if isinstance(payload, str) else (payload.get("motd", "") or "")
+                            await state_manager.set_motd(motd)
                     except Exception as e:
                         logger.error(f"Error handling state event {event_name}: {e}", exc_info=True)
 

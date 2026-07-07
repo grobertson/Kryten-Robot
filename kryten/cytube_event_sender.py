@@ -550,7 +550,7 @@ class CytubeEventSender:
             if reason:
                 payload["reason"] = reason
 
-            self._logger.debug(f"Banning user: {username}")
+            self._logger.info(f"Banning user: {username}")
             await self._connector._socket.emit("ban", payload)
 
             # Audit log admin operation
@@ -640,7 +640,7 @@ class CytubeEventSender:
             # Send as chat message with /mute command
             payload = {"msg": f"/mute {username}", "meta": {}}
 
-            self._logger.debug(f"Muting user: {username}")
+            self._logger.info(f"Muting user: {username}")
             await self._connector._socket.emit("chatMsg", payload)
             return True
 
@@ -671,7 +671,7 @@ class CytubeEventSender:
             # Shadow mute is handled via chat command on the server side
             payload = {"msg": f"/smute {username}", "meta": {}}
 
-            self._logger.debug(f"Shadow muting user: {username}")
+            self._logger.info(f"Shadow muting user: {username}")
             await self._connector._socket.emit("chatMsg", payload)
             return True
 

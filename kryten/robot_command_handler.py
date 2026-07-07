@@ -131,6 +131,7 @@ class RobotCommandHandler:
         try:
             request = json.loads(msg.data.decode())
             command = request.get("command", "")
+            meta = request.get("meta", {})
 
             if not command:
                 await self._send_response(
@@ -142,6 +143,31 @@ class RobotCommandHandler:
                     },
                 )
                 return
+
+            # Log every received command at INFO so it's visible in production logs.
+            meta_channel = meta.get("channel", "?")
+            meta_domain = meta.get("domain", "?")
+            meta_source = meta.get("source", "?")
+            self.logger.info(
+                f"Received command '{command}' from {meta_source} "
+                f"(target: {meta_domain}/{meta_channel})"
+            )
+
+            # Channel/domain routing guard: if the command carries a meta channel/domain
+            # and it doesn't match this robot's configured channel/domain, ignore it.
+            # This prevents a robot for channel-A from executing commands sent for channel-B
+            # when multiple robot instances share the same NATS server.
+            if self.config:
+                my_domain = self.config.cytube.domain
+                my_channel = self.config.cytube.channel
+                # Only filter if the sender supplied both meta fields.
+                if meta_channel != "?" and meta_domain != "?":
+                    if meta_domain != my_domain or meta_channel.lower() != my_channel.lower():
+                        self.logger.debug(
+                            f"Ignoring command '{command}': intended for "
+                            f"{meta_domain}/{meta_channel}, I am {my_domain}/{my_channel}"
+                        )
+                        return
 
             # Check service routing
             service = request.get("service")
@@ -233,7 +259,7 @@ class RobotCommandHandler:
 
             handler = handlers.get(command)
             if not handler:
-                self.logger.debug(f"Ignoring unknown command: {command}")
+                self.logger.warning(f"Unknown command ignored: '{command}'")
                 return
 
             # Extract arguments from request for standard format handlers
@@ -243,6 +269,14 @@ class RobotCommandHandler:
                 result = await handler(request)
             else:
                 result = await handler(args)
+
+            success = result.get("success", True) if isinstance(result, dict) else True
+            if success:
+                self.logger.info(f"Command '{command}' executed successfully")
+            else:
+                self.logger.warning(
+                    f"Command '{command}' execution failed: {result.get('error', 'unknown')}"
+                )
 
             await self._send_response(
                 msg.reply,
