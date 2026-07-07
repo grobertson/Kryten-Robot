@@ -199,6 +199,20 @@ class EventPublisher:
 
                 self._events_received += 1
 
+                # PM events whose text starts with "system:" are consumed locally
+                # by the robot's SystemCommandHandler and must NOT be forwarded to
+                # other services via NATS.
+                if (
+                    event_name == "pm"
+                    and isinstance(payload, dict)
+                    and payload.get("msg", "").startswith("system:")
+                ):
+                    self.logger.debug(
+                        f"Filtered system: PM from {payload.get('username', '?')} "
+                        "(not forwarding to NATS)"
+                    )
+                    continue
+
                 # Detect kick event - this means we were kicked from the channel
                 if event_name == "kick":
                     kicked_user = payload.get("name", "")

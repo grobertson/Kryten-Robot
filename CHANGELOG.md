@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.1] - 2026-07-07
+
+### Fixed
+- **`setMotd` startup crash fixed**: CyTube emits `setMotd` with a bare string payload, not a `{"motd": "..."}` dict. The state callback was calling `.get()` on the string, raising `AttributeError` on every connection. The handler now accepts either form.
+- **`__version__` always reads from `pyproject.toml`**: Previously, running from source without an editable install caused `importlib.metadata` to fall back to `"0.0.0"`, so startup logs and lifecycle events reported `v0.0.0`. The package version is now always read directly from `pyproject.toml` at import time.
+
+### Changed
+- **Robot command handler logs at INFO in production**: Every arriving `kryten.robot.command` message is now logged at `INFO` (was `DEBUG`), so command dispatch is visible when `log_level` is set to `INFO`. Unknown commands are now `WARNING` instead of `DEBUG`.
+- **Channel/domain routing guard on incoming commands**: The robot now checks the `meta.channel` / `meta.domain` fields on each incoming command against its own configured channel/domain and silently ignores commands not addressed to it. This prevents a robot for channel-A from acting on commands sent for channel-B when multiple instances share a NATS server.
+- **ban / mute / smute socket emits logged at INFO**: The `CytubeEventSender` calls for these moderation actions were at `DEBUG`; they are now `INFO` so the full chain (command received → executed → socket emitted) is observable in production logs.
+
+### Added
+- **`system:` PM command handler**: Private messages sent to the bot whose text begins with `system:` are now intercepted and handled locally — they are **not** forwarded to other services via NATS. Supported commands:
+  - `system:about` — replies with robot version, uptime, channel, and all currently registered services (from the service registry).
+  - `system:help` — replies with the list of supported `system:` commands.
+  - Unknown `system:` commands are silently dropped.
+
 ## [1.11.0] - 2026-06-21
 
 ### Fixed

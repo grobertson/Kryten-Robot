@@ -173,6 +173,7 @@ async def main(config_path: str) -> int:
 
         logger.info(f"Starting Kryten CyTube Connector v{__version__}")
         logger.info(f"Configuration loaded from {config_path}")
+        _start_time = __import__("time").time()
         logger.info(f"Log level: {config.log_level}")
 
         # Guest mode: force-disable commands for safety
@@ -703,6 +704,20 @@ async def main(config_path: str) -> int:
             )
             await cmd_subscriber.start()
             logger.info("Command subscriber started")
+
+            # Register system: PM command handler
+            from .system_commands import SystemCommandHandler
+
+            system_cmd_handler = SystemCommandHandler(
+                sender=sender,
+                service_registry=service_registry,
+                version=__version__,
+                start_time=_start_time,
+                config=config,
+                logger=logger,
+            )
+            connector.on_event("pm", system_cmd_handler.handle_pm)
+            logger.info("System PM command handler registered (system:about, system:help)")
         else:
             logger.info("Command subscriptions disabled in configuration")
 
