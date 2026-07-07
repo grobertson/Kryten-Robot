@@ -515,12 +515,14 @@ class CytubeEventSender:
             return False
 
         try:
-            payload = {"name": username}
+            # CyTube has no "kick" socket event; kicking is performed via the
+            # "/kick <name> [reason]" chat command registered by KickBanModule.
+            command = f"/kick {username}"
             if reason:
-                payload["reason"] = reason
+                command += f" {reason}"
 
             self._logger.debug(f"Kicking user: {username}")
-            await self._connector._socket.emit("kick", payload)
+            await self._connector._socket.emit("chatMsg", {"msg": command})
             return True
 
         except Exception as e:
@@ -546,12 +548,14 @@ class CytubeEventSender:
             return False
 
         try:
-            payload = {"name": username}
+            # CyTube has no "ban" socket event; banning is performed via the
+            # "/ban <name> [reason]" chat command registered by KickBanModule.
+            command = f"/ban {username}"
             if reason:
-                payload["reason"] = reason
+                command += f" {reason}"
 
             self._logger.info(f"Banning user: {username}")
-            await self._connector._socket.emit("ban", payload)
+            await self._connector._socket.emit("chatMsg", {"msg": command})
 
             # Audit log admin operation
             if self._audit_logger:

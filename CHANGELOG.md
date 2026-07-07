@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.3] - 2026-07-07
+
+### Fixed
+- **Bans and kicks now actually take effect on CyTube**: `CytubeEventSender.ban_user` and `kick_user` emitted `"ban"` / `"kick"` Socket.IO frames, but the CyTube server has no such handlers — banning and kicking are performed via the `/ban` and `/kick` chat commands registered by CyTube's `KickBanModule`. The emits silently did nothing while the robot logged the action as successful. Both methods now send the proper `/ban <name> [reason]` and `/kick <name> [reason]` chat commands, matching the existing (working) `/mute`, `/smute`, and `/unmute` implementations.
+
 ## [1.12.2] - 2026-07-07
 
 ### Fixed

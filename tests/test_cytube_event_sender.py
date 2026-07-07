@@ -206,7 +206,7 @@ class TestModerationMethods:
 
         assert result is True
         mock_connector._socket.emit.assert_called_once_with(
-            "kick", {"name": "baduser", "reason": "Spamming"}
+            "chatMsg", {"msg": "/kick baduser Spamming"}
         )
 
     @pytest.mark.asyncio
@@ -215,7 +215,7 @@ class TestModerationMethods:
         result = await sender.kick_user("baduser")
 
         assert result is True
-        mock_connector._socket.emit.assert_called_once_with("kick", {"name": "baduser"})
+        mock_connector._socket.emit.assert_called_once_with("chatMsg", {"msg": "/kick baduser"})
 
     @pytest.mark.asyncio
     async def test_ban_user_with_reason(self, sender, mock_connector):
@@ -224,7 +224,7 @@ class TestModerationMethods:
 
         assert result is True
         mock_connector._socket.emit.assert_called_once_with(
-            "ban", {"name": "troll", "reason": "Harassment"}
+            "chatMsg", {"msg": "/ban troll Harassment"}
         )
 
     @pytest.mark.asyncio
@@ -233,7 +233,7 @@ class TestModerationMethods:
         result = await sender.ban_user("troll")
 
         assert result is True
-        mock_connector._socket.emit.assert_called_once_with("ban", {"name": "troll"})
+        mock_connector._socket.emit.assert_called_once_with("chatMsg", {"msg": "/ban troll"})
 
     @pytest.mark.asyncio
     async def test_voteskip(self, sender, mock_connector):
