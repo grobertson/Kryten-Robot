@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.4] - 2026-07-07
+
+### Fixed
+- **Unban now actually removes the ban**: CyTube registers the `unban` frame with a strict type check (`TYPE_UNBAN = {id: "number", name: "string"}`) and has **no** `/unban` chat command — unbanning must go through that socket frame using the numeric ban `id` from the `banlist` event. `CytubeEventSender.unban` previously sent only `{id}` (missing `name`), so the frame failed the typecheck and was silently dropped. It now sends both `{id, name}`. The `unban` command handler additionally accepts a bare `username`: it fetches the channel banlist, resolves the matching ban id(s) by name, and unbans each (works whether or not the user is currently online). This lets kryten-moderator lift bans by username.
+
 ## [1.12.3] - 2026-07-07
 
 ### Fixed

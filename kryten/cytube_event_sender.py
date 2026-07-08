@@ -1332,13 +1332,19 @@ class CytubeEventSender:
             self._logger.error(f"Failed to request banlist: {e}", exc_info=True)
             return False
 
-    async def unban(self, ban_id: int) -> bool:
+    async def unban(self, ban_id: int, name: str) -> bool:
         """
         Remove a ban.
         Requires rank 3+ (admin).
 
+        CyTube registers the "unban" frame with a strict type check
+        (``TYPE_UNBAN = {id: "number", name: "string"}``), so **both** the
+        numeric ban id and the banned name must be sent or the server silently
+        drops the frame. The id is obtained from the "banlist" event.
+
         Args:
             ban_id: ID of the ban to remove (from banlist event)
+            name: Banned name associated with the id (required by CyTube)
 
         Returns:
             True if successful, False otherwise
@@ -1348,8 +1354,8 @@ class CytubeEventSender:
             return False
 
         try:
-            payload = {"id": ban_id}
-            self._logger.debug(f"Unbanning ID {ban_id}")
+            payload = {"id": int(ban_id), "name": name}
+            self._logger.info(f"Unbanning {name} (id {ban_id})")
             await self._connector._socket.emit("unban", payload)
             return True
 

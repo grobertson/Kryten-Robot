@@ -890,17 +890,62 @@ class RobotCommandHandler:
         return {"banlist": data}
 
     async def _handle_unban(self, args: dict[str, Any]) -> dict[str, Any]:
-        """Handle unban command."""
+        """Handle unban command.
+
+        CyTube's "unban" frame requires both the numeric ban ``id`` and the
+        banned ``name``. Callers (e.g. kryten-moderator) generally only know the
+        username, so when no explicit ``ban_id`` is supplied we fetch the
+        channel banlist and resolve the id(s) by name before unbanning.
+        """
         if not self.sender:
             raise RuntimeError("CytubeEventSender not available")
 
+        username = args.get("username") or args.get("name")
         ban_id = args.get("ban_id") or args.get("id")
-        if ban_id is None:
-            raise ValueError("Missing ban_id")
 
-        success = await self.sender.unban(int(ban_id))
-        if success:
-            return {"success": True}
+        # Explicit id + name path (id and name both known).
+        if ban_id is not None and username:
+            success = await self.sender.unban(int(ban_id), username)
+            if success:
+                return {"success": True}
+            return {"success": False, "error": "Failed to unban"}
+
+        if not username:
+            raise ValueError("Missing username or ban_id")
+
+        # Resolve ban id(s) by name from the current banlist.
+        banlist_event = await self._await_cytube_event(
+            "banlist",
+            self.sender.request_banlist(),
+            timeout=5.0,
+        )
+        entries = (
+            banlist_event.get("payload", banlist_event)
+            if isinstance(banlist_event, dict)
+            else banlist_event
+        )
+        if not isinstance(entries, list):
+            entries = []
+
+        target = username.lower()
+        matches = [
+            b
+            for b in entries
+            if isinstance(b, dict) and str(b.get("name", "")).lower() == target
+        ]
+        if not matches:
+            return {"success": False, "error": f"No active ban for '{username}'"}
+
+        removed = 0
+        for entry in matches:
+            entry_id = entry.get("id")
+            if entry_id is None:
+                continue
+            if await self.sender.unban(int(entry_id), entry.get("name", username)):
+                removed += 1
+
+        if removed:
+            return {"success": True, "removed": removed}
         return {"success": False, "error": "Failed to unban"}
 
     async def _handle_read_chan_log(self, args: dict[str, Any]) -> dict[str, Any]:

@@ -236,6 +236,16 @@ class TestModerationMethods:
         mock_connector._socket.emit.assert_called_once_with("chatMsg", {"msg": "/ban troll"})
 
     @pytest.mark.asyncio
+    async def test_unban_sends_id_and_name(self, sender, mock_connector):
+        """Test unban sends both id and name (required by CyTube typecheck)."""
+        result = await sender.unban(42, "troll")
+
+        assert result is True
+        mock_connector._socket.emit.assert_called_once_with(
+            "unban", {"id": 42, "name": "troll"}
+        )
+
+    @pytest.mark.asyncio
     async def test_voteskip(self, sender, mock_connector):
         """Test voting to skip current video."""
         result = await sender.voteskip()
