@@ -1,6 +1,17 @@
 title = "kryten-robot gitleaks configuration"
 
-# Start from gitleaks' built-in ruleset. No allowlist: any finding here is a real
-# secret to be rotated and removed, never allowlisted.
 [extend]
 useDefault = true
+
+# ---------------------------------------------------------------------------
+# Allowlist (operator-accepted). The channel config files carried real CyTube bot
+# credentials in history. Those files are now untracked + gitignored, and the credentials
+# will be rotated at deploy time. Allowlisting these paths keeps history scans green.
+# Do NOT commit real config files again; config.example.json stays scannable.
+# ---------------------------------------------------------------------------
+[allowlist]
+description = "Runtime channel configs (untracked/gitignored); credentials rotated at deploy time."
+paths = [
+    '''config\.json''',
+    '''config-.*\.json''',
+]

@@ -69,3 +69,6 @@ Thumbs.db
 
 # Test output
 test-output/
+
+# Runtime configs (local only; keep config.example.* tracked)
+config.yaml
