@@ -241,9 +241,7 @@ class TestModerationMethods:
         result = await sender.unban(42, "troll")
 
         assert result is True
-        mock_connector._socket.emit.assert_called_once_with(
-            "unban", {"id": 42, "name": "troll"}
-        )
+        mock_connector._socket.emit.assert_called_once_with("unban", {"id": 42, "name": "troll"})
 
     @pytest.mark.asyncio
     async def test_voteskip(self, sender, mock_connector):

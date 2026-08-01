@@ -648,7 +648,6 @@ class StateManager:
                 return item.get("uid")
         return None
 
-
     def get_current_media(self) -> dict[str, Any] | None:
         """Get currently playing media.
 

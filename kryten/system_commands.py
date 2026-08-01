@@ -68,7 +68,7 @@ class SystemCommandHandler:
     # ------------------------------------------------------------------
 
     async def _dispatch(self, username: str, raw_msg: str) -> None:
-        command = raw_msg[len("system:"):].strip().lower()
+        command = raw_msg[len("system:") :].strip().lower()
         handler = {
             "about": self._about,
             "help": self._help,
@@ -81,9 +81,7 @@ class SystemCommandHandler:
                     f"Error handling system:{command} for {username}: {e}", exc_info=True
                 )
         else:
-            self._logger.debug(
-                f"Unknown system: command '{command}' from {username} — dropped"
-            )
+            self._logger.debug(f"Unknown system: command '{command}' from {username} — dropped")
 
     # ------------------------------------------------------------------
     # Command handlers
@@ -120,6 +118,7 @@ class SystemCommandHandler:
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
 
 def _format_uptime(seconds: float) -> str:
     """Return a compact human-readable uptime string."""

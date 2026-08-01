@@ -180,9 +180,7 @@ async def main(config_path: str) -> int:
         if config.cytube.guest_mode:
             logger.info("Guest mode enabled - connecting as guest user")
             if config.commands.enabled:
-                logger.warning(
-                    "Commands force-disabled: commands cannot be enabled in guest mode"
-                )
+                logger.warning("Commands force-disabled: commands cannot be enabled in guest mode")
                 config.commands.enabled = False
 
         # Initialize audit logger
@@ -294,7 +292,10 @@ async def main(config_path: str) -> int:
             try:
                 logger.info("Starting state manager")
                 state_manager = StateManager(
-                    nats_client, config.cytube.channel, logger, counting_config=config.state_counting
+                    nats_client,
+                    config.cytube.channel,
+                    logger,
+                    counting_config=config.state_counting,
                 )
                 await state_manager.start()
                 app_state.state_manager = state_manager
@@ -379,7 +380,11 @@ async def main(config_path: str) -> int:
                         elif event_name == "setMotd":
                             # Channel MOTD (also part of the admin-state bucket).
                             # CyTube emits setMotd with a bare string, not a dict.
-                            motd = payload if isinstance(payload, str) else (payload.get("motd", "") or "")
+                            motd = (
+                                payload
+                                if isinstance(payload, str)
+                                else (payload.get("motd", "") or "")
+                            )
                             await state_manager.set_motd(motd)
                     except Exception as e:
                         logger.error(f"Error handling state event {event_name}: {e}", exc_info=True)
@@ -535,13 +540,15 @@ async def main(config_path: str) -> int:
 
             attempt = 0
             while max_attempts == 0 or attempt < max_attempts:
-                delay = min(base_delay * (2 ** attempt), max_delay)
+                delay = min(base_delay * (2**attempt), max_delay)
                 jitter = random.uniform(0, delay * 0.1)
                 delay += jitter
 
                 logger.info(
                     "Waiting %.1fs before reconnect attempt %d (reason: %s)...",
-                    delay, attempt + 1, reason,
+                    delay,
+                    attempt + 1,
+                    reason,
                 )
                 try:
                     await asyncio.sleep(delay)
@@ -590,9 +597,7 @@ async def main(config_path: str) -> int:
                     reconnect_task = None
                     return
                 except Exception as e:
-                    logger.warning(
-                        "Reconnect attempt %d failed: %s", attempt + 1, e, exc_info=True
-                    )
+                    logger.warning("Reconnect attempt %d failed: %s", attempt + 1, e, exc_info=True)
                     audit_logger.log_connection_event(
                         "error",
                         "CyTube",
@@ -745,6 +750,7 @@ async def main(config_path: str) -> int:
         user_level_subscription = None
         if nats_client:
             try:
+
                 async def handle_user_level_query(msg):
                     """Handle NATS queries for logged-in user's level/rank."""
                     try:
@@ -769,7 +775,9 @@ async def main(config_path: str) -> int:
                             except Exception as reply_error:
                                 logger.error(f"Failed to send error response: {reply_error}")
 
-                user_level_subject = f"kryten.user_level.{config.cytube.domain}.{config.cytube.channel}"
+                user_level_subject = (
+                    f"kryten.user_level.{config.cytube.domain}.{config.cytube.channel}"
+                )
                 user_level_subscription = await nats_client.subscribe_request_reply(
                     subject=user_level_subject, callback=handle_user_level_query
                 )

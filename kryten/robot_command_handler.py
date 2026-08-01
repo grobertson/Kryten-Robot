@@ -113,10 +113,10 @@ class RobotCommandHandler:
             # Await the response event
             msg = await sub.next_msg(timeout=timeout)
             return json.loads(msg.data.decode())
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise TimeoutError(
                 f"CyTube did not respond with '{event_name}' within {timeout}s"
-            )
+            ) from None
         finally:
             await sub.unsubscribe()
 
@@ -489,7 +489,7 @@ class RobotCommandHandler:
 
             try:
                 outcome = await asyncio.wait_for(result_future, timeout=8.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.logger.warning("Timed out waiting for CyTube queue confirmation")
                 return {"success": True, "uid": None}
 
@@ -929,9 +929,7 @@ class RobotCommandHandler:
 
         target = username.lower()
         matches = [
-            b
-            for b in entries
-            if isinstance(b, dict) and str(b.get("name", "")).lower() == target
+            b for b in entries if isinstance(b, dict) and str(b.get("name", "")).lower() == target
         ]
         if not matches:
             return {"success": False, "error": f"No active ban for '{username}'"}
@@ -1027,9 +1025,9 @@ class RobotCommandHandler:
 
         # Add metrics endpoint if health is enabled
         if self.config and self.config.health.enabled:
-            result[
-                "metrics_endpoint"
-            ] = f"http://{self.config.health.host}:{self.config.health.port}/health"
+            result["metrics_endpoint"] = (
+                f"http://{self.config.health.host}:{self.config.health.port}/health"
+            )
 
         # Add CyTube connection info
         if self.connector:
@@ -1064,9 +1062,9 @@ class RobotCommandHandler:
 
         # Metrics endpoint
         if self.config and self.config.health.enabled:
-            health[
-                "metrics_endpoint"
-            ] = f"http://{self.config.health.host}:{self.config.health.port}/health"
+            health["metrics_endpoint"] = (
+                f"http://{self.config.health.host}:{self.config.health.port}/health"
+            )
 
         return health
 
