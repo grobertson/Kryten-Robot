@@ -721,12 +721,11 @@ class RobotCommandHandler:
 
         name = args.get("name")
         image = args.get("image")
-        source = args.get("source", "imgur")
 
         if not name or not image:
             raise ValueError("Missing name or image")
 
-        success = await self.sender.update_emote(name, image, source)
+        success = await self.sender.update_emote(name, image)
         if success:
             return {"success": True}
         return {"success": False, "error": "Failed to update emote"}

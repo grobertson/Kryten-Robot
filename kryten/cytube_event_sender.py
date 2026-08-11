@@ -958,15 +958,14 @@ class CytubeEventSender:
             self._logger.error(f"Failed to set permissions: {e}", exc_info=True)
             return False
 
-    async def update_emote(self, name: str, image: str, source: str = "imgur") -> bool:
+    async def update_emote(self, name: str, image: str) -> bool:
         """
         Add or update a channel emote.
         Requires rank 3+ (admin).
 
         Args:
             name: Emote name (without colons, e.g. "Kappa")
-            image: Image URL or ID (depends on source)
-            source: Image source ("imgur", "url", etc.)
+            image: Direct image URL (gif/webp/png/jpg)
 
         Returns:
             True if successful, False otherwise
@@ -976,14 +975,14 @@ class CytubeEventSender:
             return False
 
         try:
-            payload = {"name": name, "image": image, "source": source}
-            self._logger.debug(f"Updating emote: {name} from {source}")
+            payload = {"name": name, "image": image}
+            self._logger.debug("Updating emote: %s", name)
             await self._connector._socket.emit("updateEmote", payload)
 
             # Audit log admin operation
             if self._audit_logger:
                 self._audit_logger.log_admin_operation(
-                    operation="updateEmote", target=name, details={"image": image, "source": source}
+                    operation="updateEmote", target=name, details={"image": image}
                 )
 
             return True
