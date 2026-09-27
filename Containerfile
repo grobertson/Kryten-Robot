@@ -28,5 +28,5 @@ RUN mkdir -p /etc/kryten/kryten-robot /var/lib/kryten/kryten-robot \
 
 USER kryten
 
-ENTRYPOINT ["python -m kryten"]
+ENTRYPOINT ["python", "-m", "kryten"]
 CMD ["--config", "/etc/kryten/kryten-robot/config.json"]
