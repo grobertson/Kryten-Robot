@@ -133,6 +133,16 @@ class StateUpdater:
             self._subscriptions.append(sub)
             self._logger.debug(f"Subscribed to {subject}")
 
+            subject = build_subject(self._domain, self._channel, "updateEmote")
+            sub = await self._nats._nc.subscribe(subject, cb=self._handle_update_emote)
+            self._subscriptions.append(sub)
+            self._logger.debug(f"Subscribed to {subject}")
+
+            subject = build_subject(self._domain, self._channel, "removeEmote")
+            sub = await self._nats._nc.subscribe(subject, cb=self._handle_remove_emote)
+            self._subscriptions.append(sub)
+            self._logger.debug(f"Subscribed to {subject}")
+
             # Subscribe to admin state events
             subject = build_subject(self._domain, self._channel, "setMotd")
             sub = await self._nats._nc.subscribe(subject, cb=self._handle_set_motd)
@@ -349,6 +359,24 @@ class StateUpdater:
 
         except Exception as e:
             self._logger.error(f"Error handling emoteList event: {e}", exc_info=True)
+
+    async def _handle_update_emote(self, msg) -> None:
+        try:
+            import json
+
+            data = json.loads(msg.data.decode())
+            await self._state.update_emote(data.get("payload", {}))
+        except Exception as e:
+            self._logger.error(f"Error handling updateEmote event: {e}", exc_info=True)
+
+    async def _handle_remove_emote(self, msg) -> None:
+        try:
+            import json
+
+            data = json.loads(msg.data.decode())
+            await self._state.remove_emote(data.get("payload", {}))
+        except Exception as e:
+            self._logger.error(f"Error handling removeEmote event: {e}", exc_info=True)
 
     async def _handle_set_motd(self, msg) -> None:
         """Handle 'setMotd' event (MOTD updated)."""

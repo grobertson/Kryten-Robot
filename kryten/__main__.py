@@ -323,6 +323,10 @@ async def main(config_path: str) -> int:
 
                         if event_name == "emoteList":
                             await state_manager.update_emotes(cast(list[dict[str, Any]], payload))
+                        elif event_name == "updateEmote":
+                            await state_manager.update_emote(payload)
+                        elif event_name == "removeEmote":
+                            await state_manager.remove_emote(payload)
                         elif event_name == "playlist":
                             # Full playlist or empty list
                             await state_manager.set_playlist(cast(list[dict[str, Any]], payload))
@@ -395,6 +399,8 @@ async def main(config_path: str) -> int:
             # Register state callbacks for relevant events
             state_events = [
                 "emoteList",
+                "updateEmote",
+                "removeEmote",
                 "playlist",
                 "queue",
                 "delete",

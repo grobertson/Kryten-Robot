@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.6] - 2026-10-03
+
+### Fixed
+
+- Track incremental `updateEmote` and `removeEmote` events in channel state,
+  rather than leaving the exported list frozen at the last full `emoteList`.
+  Additions and URL edits now merge by emote name and persist to the existing
+  emote KV list; removals preserve unrelated entries. This lets API-gate and
+  Webqueue rehosting see newly added GIF, PNG, and JPEG emotes without requiring
+  a Robot reconnect. Both the direct CyTube callbacks and the optional NATS
+  state updater handle these events and log malformed payloads safely.
+
 ## [1.12.5] - 2026-08-11
 
 ### Changed

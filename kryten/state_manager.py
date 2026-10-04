@@ -374,6 +374,30 @@ class StateManager:
         except Exception as e:
             self._logger.error(f"Failed to update emotes: {e}", exc_info=True)
 
+    async def update_emote(self, emote: dict[str, Any]) -> None:
+        name = emote.get("name")
+        if not isinstance(name, str) or not name:
+            self._logger.warning("Ignoring emote update without a valid name")
+            return
+
+        emotes = list(self._emotes)
+        for index, existing in enumerate(emotes):
+            if existing.get("name") == name:
+                emotes[index] = {**existing, **emote}
+                break
+        else:
+            emotes.append(dict(emote))
+        await self.update_emotes(emotes)
+
+    async def remove_emote(self, payload: str | dict[str, Any]) -> None:
+        name = payload if isinstance(payload, str) else payload.get("name")
+        if not isinstance(name, str) or not name:
+            self._logger.warning("Ignoring emote removal without a valid name")
+            return
+        emotes = [emote for emote in self._emotes if emote.get("name") != name]
+        if len(emotes) != len(self._emotes):
+            await self.update_emotes(emotes)
+
     # ========================================================================
     # Playlist Management
     # ========================================================================
