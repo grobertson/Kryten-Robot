@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a Robot reconnect. Both the direct CyTube callbacks and the optional NATS
   state updater handle these events and log malformed payloads safely.
 
+### Verification
+
+- Live Channel Z verification on 2026-10-04 UTC: Webqueue Admin run `6603`
+  successfully rehosted all 11 pending images, including the 40-frame animated
+  `#leathertowel` GIF and temporary PNG/JPEG probes. All 2,762 existing emotes
+  were preserved. Run `6604` made no changes. Probe additions, URL edits,
+  public image responses, and removals were verified through API-gate and
+  Robot's live state; temporary emotes and image files were then removed.
+
 ## [1.12.5] - 2026-08-11
 
 ### Changed
